@@ -1,0 +1,19 @@
+name: tg_proxy_core
+description: Pure Dart MTProto-over-WebSocket proxy engine.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  async: ^2.13.0
+  collection: ^1.19.1
+  crypto: ^3.0.8
+  meta: ^1.16.0
+  pointycastle: ^4.0.0
+  talker: ^5.2.0
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.26.3

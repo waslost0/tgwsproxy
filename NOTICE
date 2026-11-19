@@ -1,0 +1,18 @@
+TG WS Proxy
+Copyright (c) 2026 TG WS Proxy contributors
+
+This project is based on the behaviour and source of:
+
+  Flowseal/tg-ws-proxy
+  Copyright (c) 2026 Flowseal
+  MIT License
+  https://github.com/Flowseal/tg-ws-proxy
+
+  oruviyex18/AndMTProto
+  Copyright (c) 2026 Flowseal
+  MIT License
+  https://github.com/oruviyex18/AndMTProto
+
+The architecture document also references
+amurcanov/tg-ws-proxy-android (GPLv3) for historical UX comparison only.
+No code from that repository is included.
