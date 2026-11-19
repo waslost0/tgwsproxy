@@ -22,7 +22,9 @@ void proxyMain() => runProxyEngine();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  if (!Platform.isMacOS) {
+    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  }
 
   final dir = await getApplicationSupportDirectory();
   final app = AppModel(AppDatabase.open(File(p.join(dir.path, 'app.db'))));

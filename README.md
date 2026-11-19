@@ -13,6 +13,8 @@ Android-версия собрана и проверена на реальном 
 
 iOS-версия собирается локально из исходников и **не входит в GitHub Releases**: для Network Extension нужна платная учётная запись Apple Developer и подпись своим сертификатом. Инструкция — ниже.
 
+macOS-версия собирается локально и использует то же Dart-ядро в процессе приложения; подпись и нотаризация не требуются для запуска на своём Mac. Инструкция — ниже.
+
 ## Стек
 
 - Flutter 3.50 / Dart 3.14
@@ -21,6 +23,7 @@ iOS-версия собирается локально из исходников
 - `packages/tg_proxy_core` — чистое Dart-ядро (порт MIT Python-кода Flowseal)
 - Android: minSdk 29, targetSdk 36, compileSdk 37
 - iOS: Network Extension (packet tunnel) + Rust-ядро, iOS 15+
+- macOS: Flutter + Dart-ядро в процессе, macOS 12+
 - Сборка iOS: Xcode 26+, Flutter 3.50, Rust с target `aarch64-apple-ios`
 - Платная учётная запись Apple Developer с доступом к Network Extensions
 
@@ -113,6 +116,22 @@ xcrun devicectl device process launch --device <UDID> com.whitetigersoft.tgwspro
 - **AltStore** не подходит для бесплатного Apple ID: он не даёт entitlement Network Extension. С платным сертификатом возможны проблемы с переподписью вложенного `.appex`.
 - **TestFlight** технически возможен с платным аккаунтом, но требует App Store Connect и загрузки сборки; для личного использования проще Xcode/devicectl.
 - Готового IPA в Releases нет.
+
+## macOS
+
+macOS-приложение использует общий Flutter UI и чистое Dart-ядро `tg_proxy_core` в процессе приложения — без Network Extension и платного аккаунта.
+
+```bash
+flutter pub get
+flutter build macos --release
+open "build/macos/Build/Products/Release/TG WS Proxy.app"
+```
+
+- Прокси слушает `127.0.0.1:1443`; ссылка и настройки — как на Android.
+- Настройки и секрет лежат в `~/Library/Containers/com.whitetigersoft.tgwsproxy/Data/Library/Application Support/com.whitetigersoft.tgwsproxy/proxy_settings.json`. Секрет не хранится в Keychain.
+- Закрытие окна не завершает приложение; клик по иконке в Dock открывает его снова.
+- Автозапуск при входе и Bot API без Cloudflare Worker не поддерживаются.
+- Для распространения вне своего Mac нужна подпись Developer ID и нотаризация — в релизы macOS-сборка не входит.
 
 ## Маршрут Cloudflare
 

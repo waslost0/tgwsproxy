@@ -1,4 +1,6 @@
 // Purpose: About, version, license and privacy information.
+import 'dart:io';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -28,9 +30,10 @@ class _InfoPageState extends BasePageState<InfoPage> {
         AppToast.showMessage('Установлена последняя версия ${current.version}');
         return;
       }
-      final download =
-          release.apkUrl != null &&
-              UpdateChecker.isOfficialDownload(release.apkUrl!)
+      final download = Platform.isMacOS
+          ? release.pageUrl
+          : release.apkUrl != null &&
+                UpdateChecker.isOfficialDownload(release.apkUrl!)
           ? release.apkUrl!
           : release.pageUrl;
       final shouldOpen = await showDialog<bool>(

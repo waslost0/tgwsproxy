@@ -1,4 +1,6 @@
 // Purpose: Settings screen for UI and proxy options.
+import 'dart:io';
+
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
@@ -73,14 +75,16 @@ class _SettingsPageState extends BasePageState<SettingsPage>
         Card(
           child: Column(
             children: [
-              SwitchListTile(
-                value: model.autoStart,
-                onChanged: model.setAutoStart,
-                secondary: const Icon(Icons.power_settings_new),
-                title: const Text('Запускать при загрузке'),
-                subtitle: const Text('После первой разблокировки устройства'),
-              ),
-              const Divider(height: 1),
+              if (!Platform.isMacOS) ...[
+                SwitchListTile(
+                  value: model.autoStart,
+                  onChanged: model.setAutoStart,
+                  secondary: const Icon(Icons.power_settings_new),
+                  title: const Text('Запускать при загрузке'),
+                  subtitle: const Text('После первой разблокировки устройства'),
+                ),
+                const Divider(height: 1),
+              ],
               SwitchListTile(
                 value: model.checkUpdates,
                 onChanged: model.setCheckUpdates,
@@ -301,19 +305,25 @@ class _SettingsPageState extends BasePageState<SettingsPage>
               ListTile(
                 leading: const Icon(Icons.monitor_heart_outlined),
                 title: const Text('Диагностика'),
-                subtitle: const Text('Версия, Android, ABI и состояние'),
+                subtitle: Text(
+                  Platform.isMacOS
+                      ? 'Версия, macOS и состояние'
+                      : 'Версия, Android, ABI и состояние',
+                ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => showDiagnosticsDialog(context, model.proxy),
               ),
               const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.battery_saver_outlined),
-                title: const Text('Энергосбережение'),
-                subtitle: const Text('Разрешить работу в фоне'),
-                trailing: const Icon(Icons.open_in_new),
-                onTap: model.proxy.openBatterySettings,
-              ),
-              const Divider(height: 1),
+              if (!Platform.isMacOS) ...[
+                ListTile(
+                  leading: const Icon(Icons.battery_saver_outlined),
+                  title: const Text('Энергосбережение'),
+                  subtitle: const Text('Разрешить работу в фоне'),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: model.proxy.openBatterySettings,
+                ),
+                const Divider(height: 1),
+              ],
               ListTile(
                 leading: const Icon(Icons.upload_file_outlined),
                 title: const Text('Экспорт настроек'),

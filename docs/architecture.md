@@ -27,7 +27,7 @@ Android- и iOS-приложение на Flutter: локальный MTProto-п
 | Bot API | Android: включён по умолчанию, порт 8081; iOS: не поддерживается (`botApiError`) |
 | minSdk / targetSdk | 29 / 36, compileSdk из base-flutter (37); iOS 15+ |
 | Package id | Android `com.example.tgwsproxy` — временный; iOS `com.whitetigersoft.tgwsproxy` |
-| Платформы | Android и iOS (Network Extension); web/desktop — вне scope |
+| Платформы | Android и iOS (Network Extension), macOS (Dart-ядро в процессе); web/desktop — вне scope |
 
 ---
 
@@ -945,7 +945,7 @@ Bot client ──CONNECT api.telegram.org:443──► 127.0.0.1:8081 (Dart bota
 | Rust unit | `cargo test --lib`: TLS по умолчанию (не `NoVerify`), 2 теста proxy. **3 теста.** |
 | Kotlin unit | `ProxyAddress`: допустимые адреса/порты. **3 теста**, запускаются локально `./gradlew :app:testDebugUnitTest`; в CI не входят. |
 | Kotlin instrumented | `ProxyService` + headless engine start/stop, watchdog, BootReceiver, TileService, DataStore, уничтожение UI-процесса. Автотестов нет. |
-| Flutter unit/widget | `UpdateChecker` (сравнение версий, официальный URL, SHA-256), модели/WM, форматирование, экраны. **5 тестов.** |
+| Flutter unit/widget | `UpdateChecker` (сравнение версий, официальный URL, SHA-256), `MacProxyEngine` (секрет, импорт/экспорт, запуск listener), модели/WM, форматирование, экраны. **9 тестов.** |
 | iOS RunnerTests | `IosProxySettings.generatedSecret` — 32 hex, не legacy-константа, отклонение некорректных секретов. **2 теста** на устройстве. |
 | Integration | `integration_test`: старт → порт 1443 слушается → стоп → порт закрыт; смена настроек → рестарт; Bot API CONNECT — не реализовано |
 | Manual | устройства/клиенты/сети, reboot, tile, Doze, airplane mode, блокировка CF по TLS |
@@ -1120,3 +1120,12 @@ Android 0.2.1 опубликован; iOS собирается локально 
 - TLS проверяется (`webpki-roots`); `NoVerify` — только для явного SNI-fronting; `no_secure` по умолчанию выключен.
 - Bot API не поддерживается; сборка/подпись/установка вручную (`flutter build ios --release` → `ios/scripts/resign.sh` → `devicectl`), в Releases не входит.
 - Ограничения: нет Keychain и фонового автозапуска приложения, нет Swift-тестов в CI (2 RunnerTests запускаются вручную на устройстве), баннер миграции визуально не проверялся.
+
+### 21.4. macOS: реализация
+
+- `macos/` — Flutter-приложение, общий 4-табовый UI; Dart-ядро `tg_proxy_core` работает в процессе UI-изолята (`MacProxyEngine`), без MethodChannel и Network Extension.
+- Настройки и секрет — `Application Support` в sandbox-контейнере (`proxy_settings.json`); секрет генерируется `Random.secure`, не в Keychain.
+- Loopback `127.0.0.1:1443`, ссылка `tg://proxy`, открытие Telegram через `url_launcher`.
+- Entitlements: `network.client`, `network.server`, `files.user-selected.read-only`; окно закрывается без завершения приложения, Dock возвращает окно.
+- `ProxyRepository` выбирает Mac-бэкенд по `Platform.isMacOS`; Android/iOS-каналы не менялись. Скрыты «Энергосбережение» и автозапуск, диагностика показывает macOS, обновление открывает страницу релизов.
+- Ограничения: нет Keychain, автозапуска при входе и подписи/нотаризации; Bot API требует CF Worker; тесты — 4 unit-теста `MacProxyEngine` (секрет, импорт/экспорт, start/stop listener).
