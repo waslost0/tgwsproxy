@@ -66,6 +66,9 @@ final class IosProxyBridge: NSObject, FlutterStreamHandler {
       }
     case "getSecret":
       self.complete(result, manager.secret())
+    case "acknowledgeSecretMigration":
+      manager.acknowledgeSecretMigration()
+      self.complete(result, true)
     case "regenerateSecret":
       let secret = manager.regenerateSecret()
       manager.status { state in
@@ -124,6 +127,7 @@ final class IosProxyBridge: NSObject, FlutterStreamHandler {
       "state": stateMap(state),
       "link": manager.link(),
       "secret": manager.secret(),
+      "secretMigrated": manager.secretMigrated,
     ]
   }
 

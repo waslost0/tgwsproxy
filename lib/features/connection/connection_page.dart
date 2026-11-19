@@ -81,6 +81,45 @@ class _ConnectionPageState extends BasePageState<ConnectionPage>
             32,
           ),
           children: [
+            if (model.secretMigrated) ...[
+              Card(
+                color: AppColors.surfaceLow,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Секрет прокси обновлён',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Старая ссылка больше не работает. '
+                        'Добавьте прокси в Telegram заново.',
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          FilledButton(
+                            onPressed: () => context
+                                .read<ProxyRepository>()
+                                .openInTelegram(),
+                            child: const Text('Открыть в Telegram'),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: model.acknowledgeSecretMigration,
+                            child: const Text('Понятно'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             HeroCard(
               running: running,
               busy: busy,

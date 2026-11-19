@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// Persistent iOS proxy settings. Android keeps the same keys in DataStore;
 /// on iOS the App Group defaults are the single source of truth for the app
@@ -24,19 +25,46 @@ struct IosProxySettings: Codable {
   var autoStart = true
   var checkUpdates = true
   var domain = "wts-tbss-test.ru"
-  var secret = "e6472c7872a569823465f0186d4e62b0"
+  var secret = ""
+  /// Set once when the publicly known legacy secret was replaced.
+  var secretMigrated: Bool?
 
   static let key = "ios_proxy_settings"
+  static let legacySecret = "e6472c7872a569823465f0186d4e62b0"
 
   static func load() -> IosProxySettings {
     let defaults = UserDefaults(suiteName: AppGroup.identifier) ?? .standard
     guard
       let data = defaults.data(forKey: key),
-      let value = try? JSONDecoder().decode(IosProxySettings.self, from: data)
+      var value = try? JSONDecoder().decode(IosProxySettings.self, from: data)
     else {
-      return IosProxySettings()
+      var fresh = IosProxySettings()
+      fresh.secret = generatedSecret()
+      fresh.save()
+      return fresh
+    }
+    if value.secret.lowercased() == legacySecret {
+      value.secret = generatedSecret()
+      value.secretMigrated = true
+      value.save()
+    } else if !isValidSecret(value.secret) {
+      value.secret = generatedSecret()
+      value.save()
     }
     return value
+  }
+
+  /// 16 random bytes as hex; UUID is a safe fallback if the RNG fails.
+  static func generatedSecret() -> String {
+    var bytes = [UInt8](repeating: 0, count: 16)
+    guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+      return UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    }
+    return bytes.map { String(format: "%02x", $0) }.joined()
+  }
+
+  static func isValidSecret(_ value: String) -> Bool {
+    value.count == 32 && value.allSatisfy(\.isHexDigit)
   }
 
   func save() {

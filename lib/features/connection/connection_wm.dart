@@ -21,6 +21,7 @@ class ConnectionWM extends BaseModel {
   int bytesUp = 0;
   int bytesDown = 0;
   String route = '—';
+  bool secretMigrated = false;
 
   bool get running => status == ProxyStatus.running;
   bool get busy =>
@@ -37,6 +38,7 @@ class ConnectionWM extends BaseModel {
     bytesDown = state.bytesDown;
     route = state.displayRoute;
     error = _repository.error ?? state.error;
+    secretMigrated = _repository.secretMigrated;
 
     if (state.starting) {
       status = ProxyStatus.starting;
@@ -60,6 +62,9 @@ class ConnectionWM extends BaseModel {
       await _repository.start();
     }
   }
+
+  Future<void> acknowledgeSecretMigration() =>
+      _repository.acknowledgeSecretMigration();
 
   @override
   void dispose() {

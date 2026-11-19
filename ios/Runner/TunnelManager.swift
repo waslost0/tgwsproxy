@@ -24,14 +24,21 @@ final class TunnelManager {
     _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
     let secret = bytes.map { String(format: "%02x", $0) }.joined()
     settings.secret = secret
+    settings.secretMigrated = nil
     settings.save()
     return secret
   }
 
+  var secretMigrated: Bool { settings.secretMigrated == true }
+
+  func acknowledgeSecretMigration() {
+    settings.secretMigrated = nil
+    settings.save()
+  }
+
   func secret() -> String {
     if settings.secret.count != 32 {
-      settings.secret = "e6472c7872a569823465f0186d4e62b0"
-      settings.save()
+      return regenerateSecret()
     }
     return settings.secret
   }

@@ -88,6 +88,7 @@ class ProxyBootstrap {
     required this.link,
     required this.secret,
     required this.engineVersion,
+    this.secretMigrated = false,
   });
 
   final ProxySnapshot state;
@@ -95,6 +96,7 @@ class ProxyBootstrap {
   final String link;
   final String secret;
   final String engineVersion;
+  final bool secretMigrated;
 
   factory ProxyBootstrap.fromMap(Map<dynamic, dynamic> map) {
     final rawSettings = map['settings'];
@@ -108,6 +110,7 @@ class ProxyBootstrap {
       link: (map['link'] as String?) ?? '',
       secret: (map['secret'] as String?) ?? '',
       engineVersion: (map['engineVersion'] as String?) ?? '0.1.0',
+      secretMigrated: map['secretMigrated'] == true,
     );
   }
 }

@@ -21,6 +21,7 @@ class ProxyRepository extends ChangeNotifier {
   String secret = '';
   String engineVersion = '0.1.0';
   String? error;
+  bool secretMigrated = false;
 
   final Talker talker = Talker(settings: TalkerSettings(maxHistoryItems: 2000));
   StreamSubscription<dynamic>? _subscription;
@@ -77,6 +78,20 @@ class ProxyRepository extends ChangeNotifier {
   Future<void> regenerateSecret() async {
     await _run('regenerateSecret');
     await refresh();
+  }
+
+  Future<void> acknowledgeSecretMigration() async {
+    try {
+      await _channel.invokeMethod<void>('acknowledgeSecretMigration');
+    } on MissingPluginException {
+      // Android has no migration state.
+    } on PlatformException catch (err) {
+      error = err.message ?? err.code;
+      notifyListeners();
+      return;
+    }
+    secretMigrated = false;
+    notifyListeners();
   }
 
   Future<void> openInTelegram() async {
@@ -201,6 +216,7 @@ class ProxyRepository extends ChangeNotifier {
     link = bootstrap.link;
     secret = bootstrap.secret;
     engineVersion = bootstrap.engineVersion;
+    secretMigrated = bootstrap.secretMigrated;
     notifyListeners();
   }
 
