@@ -32,8 +32,7 @@ class UpdateChecker {
       'https://github.com/$repository/releases/download/';
 
   /// Only release assets served from this repository may be opened.
-  static bool isOfficialDownload(String url) =>
-      url.startsWith(_downloadPrefix);
+  static bool isOfficialDownload(String url) => url.startsWith(_downloadPrefix);
 
   /// Extracts the SHA-256 for [assetName] from a `SHA256SUMS` body.
   static String? parseSha256(String sums, String assetName) {

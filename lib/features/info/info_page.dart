@@ -28,7 +28,8 @@ class _InfoPageState extends BasePageState<InfoPage> {
         AppToast.showMessage('Установлена последняя версия ${current.version}');
         return;
       }
-      final download = release.apkUrl != null &&
+      final download =
+          release.apkUrl != null &&
               UpdateChecker.isOfficialDownload(release.apkUrl!)
           ? release.apkUrl!
           : release.pageUrl;

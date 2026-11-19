@@ -22,8 +22,10 @@ void main() {
     });
 
     test('rejects other hosts and repositories', () {
-      expect(UpdateChecker.isOfficialDownload('https://evil.example/app.apk'),
-          isFalse);
+      expect(
+        UpdateChecker.isOfficialDownload('https://evil.example/app.apk'),
+        isFalse,
+      );
       expect(
         UpdateChecker.isOfficialDownload(
           'https://github.com/other/repo/releases/download/v1/app.apk',
