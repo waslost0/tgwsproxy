@@ -18,6 +18,9 @@ import 'proxy_models.dart';
 class ProxyRepository extends ChangeNotifier {
   static const _channel = MethodChannel('com.example.tgwsproxy/proxy');
   static const _events = EventChannel('com.example.tgwsproxy/proxy_events');
+  static const _menuChannel = MethodChannel(
+    'com.whitetigersoft.tgwsproxy/menu',
+  );
 
   ProxySnapshot state = const ProxySnapshot();
   Map<String, dynamic> settings = <String, dynamic>{};
@@ -44,6 +47,7 @@ class ProxyRepository extends ChangeNotifier {
       mac.onState = (map) {
         state = ProxySnapshot.fromMap(map);
         notifyListeners();
+        _notifyMenu();
       };
       _macLogs = mac.logs.listen((data) {
         final name = data.logLevel?.name;
@@ -57,6 +61,7 @@ class ProxyRepository extends ChangeNotifier {
         talker.log(data.displayMessage, logLevel: level);
       });
       _mac = mac;
+      _menuChannel.setMethodCallHandler(_handleMenuCall);
       await refresh();
       return;
     }
@@ -240,6 +245,37 @@ class ProxyRepository extends ChangeNotifier {
     await refresh();
   }
 
+  Future<dynamic> _handleMenuCall(MethodCall call) async {
+    switch (call.method) {
+      case 'toggle':
+        if (state.running) {
+          await stop();
+        } else {
+          await start();
+        }
+      case 'openTelegram':
+        await openInTelegram();
+      case 'sync':
+        _notifyMenu();
+    }
+    return null;
+  }
+
+  void _notifyMenu() {
+    final mac = _mac;
+    if (mac == null) return;
+    unawaited(
+      _menuChannel
+          .invokeMethod<void>('state', <String, dynamic>{
+            'running': state.running,
+            'starting': state.starting,
+            'port': state.port,
+            'link': link.isNotEmpty ? link : mac.link(),
+          })
+          .catchError((_) {}),
+    );
+  }
+
   Future<void> _run(String method) async {
     error = null;
     state = ProxySnapshot(
@@ -308,6 +344,7 @@ class ProxyRepository extends ChangeNotifier {
     engineVersion = bootstrap.engineVersion;
     secretMigrated = bootstrap.secretMigrated;
     notifyListeners();
+    _notifyMenu();
   }
 
   @override
@@ -315,7 +352,10 @@ class ProxyRepository extends ChangeNotifier {
     _subscription?.cancel();
     _macLogs?.cancel();
     final mac = _mac;
-    if (mac != null) unawaited(mac.dispose());
+    if (mac != null) {
+      _menuChannel.setMethodCallHandler(null);
+      unawaited(mac.dispose());
+    }
     super.dispose();
   }
 }

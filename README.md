@@ -132,6 +132,7 @@ open "build/macos/Build/Products/Release/TG WS Proxy.app"
 - Если Telegram показывает `connecting...`, удали старую запись `127.0.0.1:1443` и добавь заново через «Открыть в Telegram» — секрет у нового macOS-билда свой.
 - Настройки и секрет лежат в `~/Library/Containers/com.whitetigersoft.tgwsproxy/Data/Library/Application Support/com.whitetigersoft.tgwsproxy/proxy_settings.json`. Секрет не хранится в Keychain.
 - Закрытие окна не завершает приложение; клик по иконке в Dock открывает его снова.
+- В menu bar есть иконка со статусом и меню: «Подключить/Отключить», «Открыть Telegram», «Скопировать ссылку», «Открыть приложение», «Выход».
 - Автозапуск при входе и Bot API без Cloudflare Worker не поддерживаются.
 - Для распространения вне своего Mac нужна подпись Developer ID и нотаризация — в релизы macOS-сборка не входит.
 
