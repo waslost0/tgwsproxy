@@ -37,5 +37,11 @@ jobs:
         working-directory: packages/tg_proxy_core
         run: dart test
 
+      - name: Prefer Maven Central for Gradle plugins
+        run: |
+          dir="${GRADLE_USER_HOME:-$HOME/.gradle}/init.d"
+          mkdir -p "$dir"
+          cp .github/gradle/init-repositories.gradle.kts "$dir/"
+
       - name: Build debug APK
         run: flutter build apk --debug
