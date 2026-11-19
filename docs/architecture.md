@@ -1,12 +1,14 @@
 # Архитектура tgwsproxy
 
-**Версия:** 1.2 · **Дата:** 2026-11-18 · **Статус:** Android MVP реализован; этап 6 (паритет и надёжность) в работе; iOS — отдельный трек
+**Версия:** 1.3 · **Дата:** 2026-11-19 · **Статус:** Android и iOS реализованы; Android 0.2.1 опубликован, iOS собирается локально
 
-Android-приложение на Flutter: локальный MTProto-прокси для Telegram с транспортом через Cloudflare Worker / WebSocket и прямым TCP-fallback. UI и настройки — по образцу рабочего `AndMTProto`, недостающие возможности — из десктопного `tg-ws-proxy`.
+Android- и iOS-приложение на Flutter: локальный MTProto-прокси для Telegram с транспортом через Cloudflare Worker / WebSocket и прямым TCP-fallback. UI и настройки — по образцу рабочего `AndMTProto`, недостающие возможности — из десктопного `tg-ws-proxy`. На Android прокси живёт в Kotlin foreground service, на iOS — в Network Extension с Rust-ядром.
 
 > **Изменение 1.1.** Ядро прокси перенесено с Python/Chaquopy на **чистый Dart**. Python-код рабочего `AndMTProto` (MIT) остаётся источником проверенной логики и констант для порта; в APK ни Python, ни нативного ядра нет. Kotlin-сервис остаётся владельцем Android-жизненного цикла и запускает headless `FlutterEngine` с Dart-ядром.
 >
 > **Изменение 1.2.** Добавлен фактический статус реализации (§21), обновлены матрица паритета, дорожная карта и план iOS. Разделы 6–17 описывают целевую архитектуру; если они расходятся с §21, приоритет у §21.
+>
+> **Изменение 1.3.** iOS реализован на Network Extension с Rust-ядром (`ios/RustCore`, GPLv3); общий Flutter UI. История репозитория схлопнута в один коммит `TG WS Proxy 0.2.1`, теги `stage-*` удалены. Обновлены TLS/секрет, манифест, обновления, лицензии, тесты и CI.
 
 ---
 
@@ -14,18 +16,18 @@ Android-приложение на Flutter: локальный MTProto-прокс
 
 | Вопрос | Решение |
 |---|---|
-| Состояние | Android: ядро, сервис и основной UI работают; 59 тестов ядра; остались паритет настроек, сетевой watchdog, логи/обновления и H2 (§21) |
-| Ядро | Чистый Dart-движок `packages/tg_proxy_core` — порт Python-ядра Flowseal из `AndMTProto`; Python и нативного ядра в APK нет |
-| Лицензия проекта | **MIT** (порт MIT-кода; сохраняем copyright Flowseal) |
+| Состояние | Android и iOS работают; Dart-ядро — 60 тестов, Rust — 3, Android JUnit — 3, iOS RunnerTests — 2; Android 0.2.1 в Releases, iOS — локальная сборка |
+| Ядро | Android — чистый Dart-движок `packages/tg_proxy_core`; iOS — Rust-ядро в Network Extension. Python в APK нет |
+| Лицензия | Android и Dart-ядро — **MIT**; iOS Rust-ядро (`ios/RustCore`) — **GPLv3** |
 | UI | `base-flutter`: MVVM + provider + go_router + Drift (без Elementary) |
-| Владелец жизненного цикла | Kotlin foreground service; Dart-ядро живёт в headless `FlutterEngine` сервиса |
+| Владелец жизненного цикла | Android — Kotlin foreground service + headless `FlutterEngine`; iOS — `NEPacketTunnelProvider` |
 | Связь UI Flutter ↔ Android | MethodChannel + EventChannel, JSON-строки |
-| Связь Kotlin ↔ Dart-ядро | MethodChannel `.../engine` внутри headless engine, JSON |
-| Хранилище настроек | Kotlin DataStore — единственный источник истины; Drift — только UI-состояние; секрет — Android Keystore |
-| Bot API | Ядро и запуск `127.0.0.1:8081` готовы; UI и выключение по умолчанию — этап 6 |
-| minSdk / targetSdk | 29 / 36, compileSdk из base-flutter (37) |
-| Package id | `com.example.tgwsproxy` — временный, заменить до релиза |
-| Платформы | Android реализован. iOS — отдельный личный трек через Network Extension (§21); web/desktop — вне scope |
+| Связь UI Flutter ↔ iOS | Тот же MethodChannel `.../proxy`, реализация в `IosProxyBridge` |
+| Хранилище настроек | Android — DataStore + Android Keystore; iOS — App Group `UserDefaults`; Drift — только UI-состояние |
+| Bot API | Android: включён по умолчанию, порт 8081; iOS: не поддерживается (`botApiError`) |
+| minSdk / targetSdk | 29 / 36, compileSdk из base-flutter (37); iOS 15+ |
+| Package id | Android `com.example.tgwsproxy` — временный; iOS `com.whitetigersoft.tgwsproxy` |
+| Платформы | Android и iOS (Network Extension); web/desktop — вне scope |
 
 ---
 
@@ -40,7 +42,7 @@ Android-приложение на Flutter: локальный MTProto-прокс
 
 ### Не-цели
 
-- iOS в текущем Android-приложении; iOS вынесен в отдельный трек (§21), web/desktop — вне scope.
+- Другие платформы: iOS реализован отдельным target (`ios/`) с Network Extension; web/desktop — вне scope.
 - Трей, portable mode, CLI-флаги.
 - Прозрачный перехват всего трафика через `VpnService` (конфликтует с прокси Telegram и требует отдельной модели разрешений).
 - Правка `/etc/hosts` и прослушивание `:443` (нужен root; заменено на Bot API HTTP-прокси).
@@ -69,7 +71,7 @@ Android-приложение на Flutter: локальный MTProto-прокс
 Берём:
 
 - Python-ядро `proxy/` (4644 LOC): config, utils, `tg_ws_proxy`, bridge, pool, raw_websocket, fake_tls, cf_h2, h2_transport, balancer, stats, event_loop, network_debug, `_aes`;
-- Kotlin-слой: `ProxyService`, `ProxyCore`, `ProxyTileService`, `BootReceiver`, `ConnectionWatch`, `StallDetector`, `ProxySettings`, `UpdateCheckJob`, `SystemIntents`;
+- Kotlin-слой: `ProxyService`, `ProxyCore`, `ProxyTileService`, `BootReceiver`, `NetworkWatcher`, `StallDetector`, `ProxySettings`, `UpdateCheckJob`, `SystemIntents`;
 - UX: большая кнопка старта, статус/маршруты/статистика, hint-карточки, настройки с секциями, лог-шит, QR/ссылка, apply-in-Telegram, динамические цвета, палитры, экспериментальные DC (5, 203, media), интервалы проверки обновлений;
 - проверенные константы: порт 1443, пул 4, буферы 256 КБ (см. ADR-13), таймауты, `/apiws`, `/apiws_test`, Cooldown 429, reuse 120 с, DC-списки и тестовые DC;
 - сетевые сценарии: auto-port при занятом 1443, рестарт при смене сети, stall detector 60 с, TLS-проба CF и авто-включение `no_secure`, watchdog, ротация логов с редактированием секрета.
@@ -105,13 +107,13 @@ Android-приложение на Flutter: локальный MTProto-прокс
 | ADR-5 | Один JSON-конфиг на старт движка | Порядок настроек не размазан по Kotlin; проще тестировать | Dart-модель `EngineConfig` + повторная валидация |
 | ADR-6 | Bot API — локальный HTTP CONNECT-прокси | Работает без root; не нужен VPN | Клиент бота надо настроить на `127.0.0.1:8081`; это не прозрачно для всех приложений |
 | ADR-7 | Два FlutterEngine в одном процессе: UI и headless-сервис | Headless engine не может показывать UI; сервис стартует без Activity | +память на второй engine; состояние через Kotlin `StateFlow`; смягчаем `FlutterEngineGroup` |
-| ADR-8 | Только Android, база урезается | Меньше платформенного кода и зависимостей | Нет iOS/web; при необходимости — отдельный трек |
+| ADR-8 | Android — основная платформа, iOS — отдельный target с Network Extension | Меньше платформенного кода в общем слое | iOS требует платного Apple Developer и ручной подписи |
 | ADR-9 | Никакой аналитики и сетевых SDK | Приложение про приватность; меньше разрешений | Диагностика только локальные логи/отчёт |
 | ADR-10 | minSdk 29 | Совпадает с base-flutter; FGS, notification channels, Keystore | Отсекаем Android 8–9 (небольшая доля) |
 | ADR-11 | Свой raw WebSocket поверх `SecureSocket`, не `dart:io WebSocket` | Нужны SNI, управляемый TLS, маскирование, ping/pong и backpressure | Больше кода; покрываем тестами кадров и handshake |
 | ADR-12 | Сначала чистый Dart AES-CTR, FFI — только по результату бенчмарка | Логика остаётся в Dart; нет нативной сборки | Если <10 МБ/с на целевом ARM — добавляем узкий FFI-примитив, ADR пересматривается |
 | ADR-13 | `bufferSizeKb` — только поле совместимости | `dart:io` не даёт SO_RCVBUF/SO_SNDBUF; менять размер буфера ядра нельзя | В UI скрыто/помечено «не поддерживается»; импорт не ломается |
-| ADR-14 | TLS-сертификаты проверяются по умолчанию, без NoVerify | Так работает рабочий AndMTProto: certifi + check_hostname; MTProto всё равно E2E-шифрован | Нет fronting-обхода; при DPI остаётся `no_secure` (порт 80) и смена CF-домена |
+| ADR-14 | TLS-сертификаты проверяются по умолчанию (`SecureSocket` / `webpki-roots`) | Как в рабочем AndMTProto: certifi + check_hostname; MTProto всё равно E2E-шифрован | `NoVerify` допустим только для явного SNI-fronting; при DPI остаётся `no_secure` (порт 80) по явному выбору |
 | ADR-15 | H2-медиа — отдельный этап после WS/MVP | `cf_h2` — 998 строк мультиплексирования, replay/backpressure; высокий риск для первого релиза | MVP без H2; медиа идёт через WS/CF; H2 включается флагом после порта |
 
 ---
@@ -187,7 +189,7 @@ tgwsproxy/
 │           │   │   ├── ProxyService.kt
 │           │   │   ├── ProxyEngineHost.kt    # headless FlutterEngine
 │           │   │   ├── ProxyController.kt
-│           │   │   ├── ConnectionWatch.kt    # сеть, stall detector, TLS probe
+│           │   │   ├── NetworkWatcher.kt    # сеть, stall detector, TLS probe
 │           │   │   ├── ProxyNotification.kt
 │           │   │   ├── ProxyTileService.kt
 │           │   │   └── BootReceiver.kt
@@ -234,15 +236,16 @@ tgwsproxy/
 │   └── l10n/{intl_ru.arb,intl_en.arb}
 ├── assets/help/{ru,en}/*.md
 ├── docs/architecture.md
-├── scripts/check_16kb.sh
-├── .github/workflows/{ci.yml,release.yml}
+├── .github/workflows/ci.yml
+├── .github/gradle/init-repositories.gradle.kts
 ├── Makefile
-├── LICENSE                  # MIT
+├── LICENSE                  # MIT (Android/Dart)
 ├── NOTICE                   # Flowseal copyright, MIT
+├── ios/RustCore/COPYING     # GPLv3 (iOS Rust core)
 └── pubspec.yaml             # name: tgwsproxy
 ```
 
-Платформенные каталоги `ios/`, `web/`, `macos/`, `linux/`, `windows/` из base-flutter удаляются.
+`ios/` содержит общий Flutter Runner, `TgwsTunnel` (Network Extension) и `RustCore`. Web/desktop/macos/linux/windows не используются.
 
 ---
 
@@ -305,7 +308,7 @@ features/info/
 | 3 | `/logs` | фильтры, поиск, автопрокрутка, экспорт |
 | 4 | `/info` | версия, помощь, лицензии, обновления, отчёт |
 
-Deep links: `tgwsproxy://connection`, `tgwsproxy://settings/...`, `tgwsproxy://logs`, `tgwsproxy://info`. Из tile preferences и уведомления открывается нужный маршрут через `Intent` + `AppLinkManager`.
+Deep links не зарегистрированы: приложение не объявляет собственных URL-схем, переходы — только внутренние маршруты `go_router`. Из уведомления открывается `MainActivity` (вкладка соединения).
 
 Стартовый маршрут — `/connection`. Auth/PIN-редиректов нет.
 
@@ -345,7 +348,7 @@ Deep links: `tgwsproxy://connection`, `tgwsproxy://settings/...`, `tgwsproxy://l
 | `BaseGridViewPageState` | GridView + `CalculateGridMixin` |
 | `AppModelAccessMixin` / `ModuleFastAccessMixin` | доступ к `AppModel`/модулям; в нашем приложении — только `ProxyModule`, без `AuthModule`/`ShopModule` |
 
-Целевой рефакторинг (после этапов 6A–6C, не сейчас):
+Целевой рефакторинг (когда функционал стабилизируется, не сейчас):
 
 1. Скопировать базовые файлы из `34e5ba68` в `lib/core/base/`, вычистить `AuthService`, `AppUser`, `AppApi`, `SideMenu`, `NavigationMode`, `flutter_auto_size_text`; `WTSLogger` заменить на текущий логгер.
 2. `ConnectionPage` → `BasePage`; `ConnectionWM` → `ConnectionModel extends BaseModel` (или `BaseDataModel<ProxySnapshot>`), доступ к `ProxyRepository` через конструктор/провайдер, а не через `context.read` внутри view.
@@ -361,7 +364,7 @@ Deep links: `tgwsproxy://connection`, `tgwsproxy://settings/...`, `tgwsproxy://l
 
 ### 8.1. Классы и обязанности
 
-> **Факт (v1.2).** Реализованы: `MainActivity`, `ProxyBridge`, `ProxyEngineHost`, `ProxyService`, `ProxyController`, `ProxyTileService`, `BootReceiver`, `SettingsStore`, `SecretStore`, `ProxyStateRepository`. Отдельного класса `EngineChannel` нет — канал живёт внутри `ProxyEngineHost`. Пока **не реализованы**: `ConnectionWatch`, `StallDetector`, TLS/plain-проба CF, auto-port, `LogRepository` с файлами, `TelegramLauncher` с chooser, `UpdateInstaller`, `UpdateCheckJob`. Таблица ниже — целевая декомпозиция.
+> **Факт (v1.3).** Реализованы: `MainActivity`, `ProxyBridge`, `ProxyEngineHost`, `ProxyService`, `ProxyController`, `ProxyTileService`, `BootReceiver`, `SettingsStore`, `SecretStore`, `ProxyStateRepository`, `NetworkWatcher`, `StallDetector`, `ProxyAddress`. Отдельного класса `EngineChannel` нет — канал живёт внутри `ProxyEngineHost`. Пока **не реализованы**: файловые логи, `TelegramLauncher` с chooser, `UpdateInstaller`, `UpdateCheckJob`. Таблица ниже — целевая декомпозиция.
 
 | Класс | Обязанность |
 |---|---|
@@ -374,19 +377,17 @@ Deep links: `tgwsproxy://connection`, `tgwsproxy://settings/...`, `tgwsproxy://l
 | `SecretStore` | генерация 16 байт `SecureRandom`, AES-GCM через Android Keystore, хранение base64 |
 | `ProxyController` | собрать `ProxyConfig`, проверить/подобрать порт, запустить/остановить сервис, рестарт |
 | `ProxyService` | FGS, wakelock, engine start/stop, stats ticker, notification, START_REDELIVER_INTENT |
-| `ConnectionWatch` | callback сети, StallDetector 60 с, TLS/plain проба CF, авто-`noSecure` |
+| `NetworkWatcher` | callback сети, StallDetector 60 с, TLS/plain проба CF, авто-`noSecure` |
 | `ProxyNotification` | канал, ongoing-уведомление, действия Stop/Restart/Open, статистика |
 | `ProxyStateRepository` | `StateFlow<ProxyRuntimeState>`, единый для сервиса, тайла и моста |
-| `LogRepository` | bounded ring buffer, файловые логи с ротацией, редактирование секрета/домена |
-| `ProxyTileService` | QS tile: toggle, состояние, открытие приложения |
-| `BootReceiver` | автозапуск после загрузки, если включено |
-| `TelegramLauncher` | `tg://proxy?...`, chooser по списку пакетов |
-| `UpdateInstaller` | установка скачанного APK через FileProvider/PackageInstaller |
-| `UpdateCheckJob` | ежедневная проверка GitHub Releases + уведомление |
+| `LogRepository` | bounded ring buffer в памяти; файловых логов и redaction нет |
+| `ProxyTileService` | QS tile: toggle, состояние, label |
+| `BootReceiver` | автозапуск после загрузки, если включено; `exported=false` |
+| `ProxyBridge` | открывает `tg://proxy?...` неявным `ACTION_VIEW` (без chooser) |
 
 ### 8.2. Жизненный цикл сервиса
 
-> **Факт (v1.2).** Старт/стоп/restart, boot, tile, FGS и headless engine работают на Android 16. `ProxyEngineHost` использует один `FlutterEngineGroup` на весь сервис и переиспользует `ProxyEngineHost` между стартами; entrypoint — `package:tgwsproxy/main.dart`, функция `proxyMain`, потому что Flutter не разрешил entrypoint из отдельной библиотеки. Ready-timeout — 30 с. Wakelock берётся на 1 час без продления. Auto-port, watchdog, `ConnectionWatch`/stall/TLS-проба и аккуратный restart без гонки UI ещё не реализованы — см. §21.
+> **Факт (v1.3).** Старт/стоп/restart, boot, tile, FGS и headless engine работают на Android 16. `ProxyEngineHost` использует один `FlutterEngineGroup` на весь сервис; entrypoint — `package:tgwsproxy/main.dart`, функция `proxyMain`. Ready-timeout — 30 с. Реализованы auto-port, watchdog, network restart, stall detector/проба и restart после `updateSettings`.
 
 ```
 Пользователь нажал Start (UI)
@@ -414,11 +415,11 @@ Tile: TileService.onClick → Running ? STOP : START
 
 - `startForeground` вызывается до создания engine, иначе Android 12+ бросит исключение.
 - `stopWithTask=false`: свайп приложения не убивает прокси.
-- Wakelock `PARTIAL_WAKE_LOCK` 1 час, release при остановке; продление пока не сделано.
-- Порт пока фиксированный 1443; проверка занятости и auto-port — этап 6B.
+- Wakelock `PARTIAL_WAKE_LOCK` берётся при старте сервиса и отпускается при остановке; ограниченного по времени продления нет.
+- Порт по умолчанию 1443; если занят, сервис подбирает свободный (`autoPortPicked`) и сохраняет его.
 - Headless engine не вызывает `runApp`, не регистрирует плагины и не зависит от Activity; UI engine живёт отдельно. Оба — в одном процессе, состояние только через Kotlin `StateFlow`.
-- Watchdog: если 15 с нет `stats`/`ping`, engine перезапускается (не более 3 раз за 10 минут) — **цель**, не реализовано.
-- `ConnectionWatch`: смена Wi-Fi ↔ mobile или возврат из авиарежима → рестарт ядра (15 с на стабилизацию, 3 с после потери); та же сеть — без рестарта. Нет трафика 60 с при ≥3 попытках → проба CF (TLS 443 vs plain 80), при TLS-блокировке авто-`noSecure` — **цель**, не реализовано.
+- Watchdog: если 15 с нет `stats`/`ping`, engine перезапускается (не более 3 раз за 10 минут).
+- `NetworkWatcher`: смена Wi-Fi ↔ mobile или возврат из авиарежима → рестарт ядра (15 с на стабилизацию, 3 с после потери); та же сеть — без рестарта. Нет трафика 60 с при ≥3 попытках → проба CF (TLS 443 vs plain 80), при TLS-блокировке авто-`noSecure`.
 - Сервис не работает в отдельном `:proxy` процессе: это усложнило бы каналы и состояние. При желании — будущий ADR с AIDL.
 
 ### 8.3. Манифест
@@ -433,26 +434,20 @@ Permissions:
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 ```
 
-`REQUEST_INSTALL_PACKAGES` нужен только для встроенного обновления; если установка через браузер — убрать.
+Встроенной установки APK нет, поэтому `REQUEST_INSTALL_PACKAGES` не запрашивается.
 
 Компоненты:
 
 ```xml
 <activity android:name=".MainActivity"
     android:exported="true"
-    android:launchMode="singleTask">
+    android:launchMode="singleTask"
+    android:taskAffinity="">
     <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
-    </intent-filter>
-    <intent-filter>
-        <action android:name="android.intent.action.VIEW"/>
-        <category android:name="android.intent.category.DEFAULT"/>
-        <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="tgwsproxy"/>
     </intent-filter>
 </activity>
 
@@ -467,27 +462,24 @@ Permissions:
 
 <service android:name=".service.ProxyTileService"
     android:exported="true"
-    android:icon="@drawable/ic_tile"
-    android:label="@string/tile_label"
+    android:icon="@mipmap/ic_launcher"
+    android:label="TG WS Proxy"
     android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
     <intent-filter>
         <action android:name="android.service.quicksettings.action.QS_TILE"/>
     </intent-filter>
-    <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="true"/>
 </service>
 
 <receiver android:name=".service.BootReceiver"
-    android:exported="true"
+    android:exported="false"
     android:enabled="true">
     <intent-filter>
         <action android:name="android.intent.action.BOOT_COMPLETED"/>
-        <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
-        <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
     </intent-filter>
 </receiver>
 ```
 
-`<queries>` — список Telegram-пакетов из Android-репозитория (Telegram, Telegram X, Plus, NekoGram, AyuGram, exteraGram и др.). Нужен для `resolveActivity` и chooser без `QUERY_ALL_PACKAGES`.
+`<queries>` содержит только `VIEW` со схемой `tg` (открытие ссылки в Telegram) и `PROCESS_TEXT` для `text/plain`. Список Telegram-пакетов не нужен: явный intent не требует `resolveActivity`.
 
 `android:allowBackup="false"`, `android:fullBackupContent="false"`, `android:dataExtractionRules="@xml/data_extraction_rules"` (исключить DataStore/secret). `android:networkSecurityConfig` не требуется: наружу только TLS, локально — raw TCP.
 
@@ -505,10 +497,9 @@ R8: специальных keep-правил для ядра нет — нати
 
 ### 8.5. QS Tile
 
-- `TileService` с `ACTIVE_TILE`; состояние `ACTIVE/INACTIVE`, subtitle `Running/Stopped`.
-- Click: если `Running` → `ACTION_STOP`, иначе `ACTION_START`.
-- После смены состояния сервис вызывает `TileService.requestListeningState(context, ComponentName(...))`.
-- Long-press (Android 13+) → `startActivityAndCollapse` на `/settings`; на старых — `ProxyTilePreferencesActivity` можно не делать, сразу открывать приложение.
+- `TileService` без `ACTIVE_TILE`: состояние `ACTIVE`, пока сервис `running` или `starting`, иначе `INACTIVE`; label «TG WS Proxy», subtitle не используется.
+- Click: если сервис работает или запускается → `ACTION_STOP`, иначе `ACTION_START`.
+- Состояние обновляется при `onStartListening`; `requestListeningState` не вызывается.
 
 ### 8.6. BootReceiver
 
@@ -535,7 +526,7 @@ auto_port_picked, no_secure_auto
 
 `secret_enc` — base64(AES-GCM(secret)) с ключом в Android Keystore (alias `tgwsproxy_secret`). Секрет генерируется при первом запуске: 16 байт `SecureRandom` → 32 hex. При смене FakeTLS-домена ссылка меняется (`ee` + secret + hex(domain)); сам секрет не меняется. `buf_kb` читается для импорта, но в UI скрыт и в движок не передаётся (ADR-13). `no_secure_auto` показывает, что `no_secure` включён автоматически после TLS-пробы, чтобы UI мог предложить вернуть TLS.
 
-**Drift (Flutter)** — локальная SQLite-БД `app.db`, только UI-состояние: таблица `prefs(key TEXT PRIMARY KEY, value TEXT)` для `onboarding_seen`, `last_tab`, позиции скролла. Схема версионируется миграциями Drift; настройки прокси сюда не дублируются, логи остаются в Kotlin/памяти и в файле. `flutter_secure_storage` — только если появится клиентский секрет (например, токен приватного репозитория обновлений); секрет прокси хранится в Android Keystore.
+**Drift (Flutter)** — локальная SQLite-БД `app.db`, только UI-состояние: таблица `prefs(key TEXT PRIMARY KEY, value TEXT)` для `onboarding_seen`, `last_tab`, позиции скролла. Схема версионируется миграциями Drift; настройки прокси сюда не дублируются, логи остаются в памяти. Секрет прокси хранится в Android Keystore.
 
 ---
 
@@ -569,7 +560,7 @@ auto_port_picked, no_secure_auto
 - **AES-CTR:** ключи `clt_dec = SHA256(prekey + secret)`, `clt_enc = SHA256(reverse(prekey + iv)[:32] + secret)`, relay enc/dec из relay init; пропуск первых 64 байт keystream; **шифруется весь поток в обе стороны**, не только заголовок.
 - **MsgSplitter:** abridged (`0x7F/0xFF`, 3-байтная длина ×4) и intermediate (4-байтная LE `& 0x7FFFFFFF`), padded intermediate; при ошибке splitter отключается, поток идёт как есть.
 - **FakeTLS:** ClientHello/HMAC-SHA256, replay cache, ServerHello, CCS, appdata, профиль длины appdata, 301 на masking-домен для не-TLS; таймауты 10 с.
-- **WS:** собственный HTTP Upgrade поверх `SecureSocket`/`Socket`, `Sec-WebSocket-Protocol: binary`, маскирование клиентских кадров, ping/pong, фрагментация, лимит 16 МБ, keepalive 30 с, read timeout 120 с. `dart:io WebSocket` не используем (нет контроля SNI/буферов/backpressure).
+- **WS:** собственный HTTP Upgrade поверх `SecureSocket`/`Socket`, `Sec-WebSocket-Protocol: binary`, маскирование клиентских кадров, ping/pong, фрагментация, лимит 16 МБ, keepalive-таймер 25 с (ping после 20 с бездействия), лимит заголовков ответа 64 КиБ. `dart:io WebSocket` не используем (нет контроля SNI/буферов/backpressure).
 - **Пулы:** WS на DC (reuse 120 с, прогрев, refill), CF worker pool (100 с), CF-домены: `kws{dc}.{domain}` и `kws{dc}-1.web.telegram.org`, `/apiws`; worker — `/apiws?dst=<ip>&dc=<dc>`; `secure = !no_secure`.
 - **Fallback:** worker → CF proxy/H2 → прямой TCP 443 с экспоненциальным backoff 30..3600 с; 429 cooldown 45..300 с.
 - **H2-медиа:** `cf_h2`/`h2_transport` — HTTP/2 POST-стриминг через CF, replay/backpressure/каналы. Первый релиз — без H2; флаг `h2_enabled` выключен, медиа идёт через WS/CF. Порт — отдельный этап с отдельными тестами.
@@ -580,7 +571,7 @@ auto_port_picked, no_secure_auto
 - `proxyMain` создаёт `ProxyServer`, ждёт `start(configJson, pathsJson)`, биндит `127.0.0.1:port` и `127.0.0.1:botapiPort`, отдаёт `started`/`stopped`/`stats`/`log`/`error`.
 - `EngineConfig` — тот же JSON, что в §10.5; пути `{cacheDir, logDir, filesDir}` передаются отдельно. DataStore — канон, Dart валидирует повторно.
 - Один event loop на engine; клиентские задачи учитываются в `Set<Future>` и отменяются при stop; listener watchdog 5 с.
-- Логи: буфер + файл `proxy.log` с ротацией `log_max_mb`, redaction секрета и CF-домена; `verbose` — debug.
+- Логи: in-memory буфер; файловых логов, ротации и redaction нет (целевое поведение — `proxy.log` с ротацией и маскированием секрета/домена).
 - Ошибки: `bad_secret`, `bad_port`, `bad_dc_ip`, `bad_fake_tls`, `port_in_use` (+`suggestedPort`), `permission`, `address`, `unknown`; на старте — событие `error` с кодом и текстом.
 
 ### 9.4. Производительность и ограничения
@@ -825,7 +816,7 @@ Bot client ──CONNECT api.telegram.org:443──► 127.0.0.1:8081 (Dart bota
 | Host/port | ✅ | ✅ | ✅ |
 | Auto-port при занятом 1443 | — | ✅ | ✅ |
 | Verbose | ✅ | ✅ | ✅ (лог-уровень) |
-| Файловые логи + ротация | ✅ | ✅ | ✅ |
+| Файловые логи + ротация | ✅ | ✅ | ⏳ in-memory Talker |
 | JSON config import/export | ✅ | ❌ | ✅ |
 | Полный экран статистики | ✅ (summary) | ⚙️ частично | ✅ |
 | Bot API | ✅ (hosts/root) | ❌ | ✅ локальный HTTP CONNECT |
@@ -854,7 +845,7 @@ Bot client ──CONNECT api.telegram.org:443──► 127.0.0.1:8081 (Dart bota
 
 1. UI для FakeTLS, CF worker domains, proxy protocol, force test DC; buffer size — только как поле импорта, без эффекта.
 2. `ws_keepalive_interval` — Dart-таймер вместо фиксированных 30 с.
-3. Файловые логи с ротацией (5 МБ × 3 по умолчанию) и redaction.
+3. Файловые логи с ротацией (5 МБ × 3 по умолчанию) и redaction — пока не реализованы: логи in-memory, без маскирования.
 4. Импорт/экспорт JSON, полный бэкап с секретом.
 5. Экран статистики: pool hits, CF pool, H2, errors, bytes, uptime.
 6. Bot API через локальный HTTP CONNECT-прокси.
@@ -899,15 +890,14 @@ Bot client ──CONNECT api.telegram.org:443──► 127.0.0.1:8081 (Dart bota
 
 ### 13.5. Обновление
 
-1. Info → «Проверить обновления» (или автоматически раз в N часов).
-2. GitHub Releases API; semver-сравнение; канал `stable` (единственный).
-3. Скачивание APK в `cacheDir/updates`, проверка SHA-256 из release-ассетов (если есть).
-4. `UpdateInstaller` → FileProvider → `ACTION_VIEW`/PackageInstaller; пользователь подтверждает.
-5. Если `REQUEST_INSTALL_PACKAGES` нет — открыть страницу релиза в браузере.
+1. Info → «Проверить обновления».
+2. `GET /repos/waslost0/tgwsproxy/releases/latest` без токена (репозиторий публичный); semver-сравнение.
+3. Открывается только официальный ассет: `apkUrl` принимается, если URL начинается с `https://github.com/waslost0/tgwsproxy/releases/download/`; иначе — страница релиза. Проверка `SHA-256` из `SHA256SUMS` реализована парсером `UpdateChecker.parseSha256`, но автоматически не применяется.
+4. APK скачивается браузером; установку и подтверждение выполняет система. Встроенного `PackageInstaller` и `REQUEST_INSTALL_PACKAGES` нет.
 
 ### 13.6. Смена сети, застой и блокировка CF
 
-1. `ConnectivityManager` сообщает о смене сети; `ConnectionWatch` ждёт 15 с (3 с после потери) и перезапускает engine, если сеть действительно другая.
+1. `ConnectivityManager` сообщает о смене сети; `NetworkWatcher` ждёт 15 с (3 с после потери) и перезапускает engine, если сеть действительно другая.
 2. `StallDetector` следит за `routed`/`bytesDown`: 60 с без изменений при ≥3 попытках → `probeCf` (TLS 443 и plain 80).
 3. Если TLS недоступен, а plain работает — включается `noSecure` с пометкой `noSecureAuto`, engine перезапускается; UI показывает карточку «CF блокируется по TLS, включён порт 80».
 4. Если трафика нет и после этого — ещё один рестарт, затем карточка с диагностикой и ссылкой на лог; watchdog не даёт сервису умереть.
@@ -918,25 +908,26 @@ Bot client ──CONNECT api.telegram.org:443──► 127.0.0.1:8081 (Dart bota
 
 - **MTProto E2E**: содержимое сообщений шифруется между клиентом и Telegram; прокси видит только транспортные метаданные.
 - **TLS проверяется**: Android — `SecureSocket` (корневые сертификаты, hostname); iOS Rust — `webpki-roots` в `TLS_CONFIG`. `NoVerify` остался только для явного SNI-fronting (`TLS_CONFIG_FRONTING`), где hostname не может совпасть по определению. MTProto остаётся E2E-шифрованным. `no_secure` выключен по умолчанию и открывает plain ws (порт 80) только по явному выбору. Остаточный риск — DPI по TLS-кривым: Dart не даёт зафиксировать X25519; при блокировке помогает `no_secure`/смена CF-домена, в перспективе — FFI-BoringSSL.
-- **Секрет** — 16 случайных байт, хранится зашифрованным ключом Android Keystore; не пишется в логи; при показе — по явному действию; буфер обмена с ссылкой содержит секрет (предупреждение).
-- **Локальные порты** по умолчанию только `127.0.0.1`. Смена bind IP на `0.0.0.0` — предупреждение «прокси доступен в локальной сети».
-- **Bot API** слушает только loopback и разрешает только `api.telegram.org:443`; open proxy невозможен.
-- **Логи**: маскировать 32-hex секреты, `bot<digits>:<token>`, `Authorization`; файлы — во внутреннем каталоге приложения, не в общем хранилище.
-- **Backup** отключён: секрет и настройки не уходят в облако.
+- **Секрет** — 16 случайных байт. Android: AES-GCM в Android Keystore, в экспорт не попадает. iOS: генерируется при первом запуске (`SecRandomCopyBytes`), хранится в App Group `UserDefaults`; публичный legacy-секрет заменяется одноразовой миграцией с баннером «добавьте прокси в Telegram заново». При показе — по явному действию; буфер обмена с ссылкой содержит секрет (предупреждение).
+- **Локальные порты** по умолчанию только `127.0.0.1`. Смена bind IP на `0.0.0.0` — предупреждение «прокси доступен в локальной сети». Host/port проверяются на входе (`ProxyAddress` на Android).
+- **Bot API** слушает только loopback и разрешает только `api.telegram.org:443`; open proxy невозможен. На iOS Bot API не поддерживается.
+- **Логи**: in-memory буфер (Talker + Kotlin ring buffer); файловых логов и автоматического маскирования секретов/токенов нет. Не логируйте ссылки и секреты вручную.
+- **Backup**: Android — `allowBackup="false"`; iOS App Group `UserDefaults` попадает в iCloud-бэкап, если он включён на устройстве.
 - **Разрешения** минимальны: нет камеры, геолокации, контактов, хранилища (file_picker использует SAF).
 - **Сеть**: только CF/Telegram и GitHub API для обновлений; никакой телеметрии.
-- **MIT**: исходники открыты; ссылка в Info; в релиз кладётся source archive (не обязано лицензией, но полезно).
+- **Лицензии**: Android и Dart-ядро — MIT; iOS Rust-ядро — GPLv3 (`ios/RustCore/COPYING`). Исходники открыты; ссылка в Info.
 
 ---
 
 ## 15. Лицензирование
 
-- Приложение и Dart-ядро: **MIT**. `LICENSE` + copyright Flowseal в производных файлах.
+- Приложение, Android-часть и Dart-ядро: **MIT**. `LICENSE` + copyright Flowseal в производных файлах.
+- **iOS Rust-ядро** `ios/RustCore`: **GPLv3**, текст — `ios/RustCore/COPYING`. При распространении iOS-сборки действуют требования GPLv3 к исходному коду.
 - `NOTICE`:
   - Flowseal/tg-ws-proxy — MIT, copyright Flowseal (Python-ядро);
   - oruviyex18/AndMTProto — MIT, Android-адаптер и UX;
   - amurcanov/tg-ws-proxy-android — GPLv3, не используется; только историческая ссылка.
-- MIT не требует раскрывать исходники, но проект открыт: публичный репозиторий + source archive в релизах.
+- MIT не требует раскрывать исходники, но проект открыт: публичный репозиторий.
 - Нельзя удалять copyright-уведомления Flowseal из портированных файлов.
 - `base-flutter` — отдельный вопрос прав; до релиза подтвердить, что шаблон можно распространять под MIT.
 
@@ -948,13 +939,15 @@ Bot client ──CONNECT api.telegram.org:443──► 127.0.0.1:8081 (Dart bota
 
 | Уровень | Что проверяем |
 |---|---|
-| Dart core unit | AES-CTR/KDF на тест-векторах, obfuscation-handshake, relay init, `MsgSplitter`, FakeTLS ClientHello/HMAC, WS-кадры и маскирование, CF-балансер, CONNECT-парсер, JSON-конфиг, stats |
+| Dart core unit | AES-CTR/KDF на тест-векторах, obfuscation-handshake, relay init, `MsgSplitter`, FakeTLS ClientHello/HMAC, WS-кадры и маскирование, CF-балансер, CONNECT-парсер, JSON-конфиг, stats; лимит заголовков WS (64 КиБ). **60 тестов.** |
 | Dart core integration | поднятие движка на localhost с фейковым WS/DC, полный handshake, порядок fallback worker→CF→TCP, повторный старт, закрытие listener'а |
 | Dart benchmark | PointyCastle AES-CTR на целевом ARM: 64 КБ чанки, gate ≥10 МБ/с, профиль памяти |
-| Kotlin unit | `ProxyConfig` JSON, link builder, state machine, маскирование логов, auto-port/noSecure-флаги |
-| Kotlin instrumented | `ProxyService` + headless engine start/stop, watchdog, BootReceiver, TileService, DataStore, уничтожение UI-процесса |
-| Flutter unit/widget | модели/JSON, WM с фейковым репозиторием, форматирование статистики, Drift in-memory, экраны и ошибки канала |
-| Integration | `integration_test`: старт → порт 1443 слушается → стоп → порт закрыт; смена настроек → рестарт; Bot API CONNECT |
+| Rust unit | `cargo test --lib`: TLS по умолчанию (не `NoVerify`), 2 теста proxy. **3 теста.** |
+| Kotlin unit | `ProxyAddress`: допустимые адреса/порты. **3 теста**, запускаются локально `./gradlew :app:testDebugUnitTest`; в CI не входят. |
+| Kotlin instrumented | `ProxyService` + headless engine start/stop, watchdog, BootReceiver, TileService, DataStore, уничтожение UI-процесса. Автотестов нет. |
+| Flutter unit/widget | `UpdateChecker` (сравнение версий, официальный URL, SHA-256), модели/WM, форматирование, экраны. **5 тестов.** |
+| iOS RunnerTests | `IosProxySettings.generatedSecret` — 32 hex, не legacy-константа, отклонение некорректных секретов. **2 теста** на устройстве. |
+| Integration | `integration_test`: старт → порт 1443 слушается → стоп → порт закрыт; смена настроек → рестарт; Bot API CONNECT — не реализовано |
 | Manual | устройства/клиенты/сети, reboot, tile, Doze, airplane mode, блокировка CF по TLS |
 
 ### 16.2. Ручная матрица
@@ -1011,24 +1004,19 @@ make core-bench # AES-CTR на текущем устройстве/хосте
 
 ### 17.3. CI (GitHub Actions)
 
-`ci.yml`:
+`ci.yml` (ubuntu):
 
-1. `flutter analyze`, `dart format --set-exit-if-changed`, `flutter test`.
-2. `dart test packages/tg_proxy_core`.
-3. `make core-bench` (не блокирует, публикует числа; gate — отдельная nightly-джоба).
-4. `flutter build apk --debug --split-per-abi`.
-5. Kotlin unit tests.
-6. `check_16kb.sh` по `libflutter.so` и итоговому APK.
+1. `flutter pub get`; `dart pub get` в `packages/tg_proxy_core`.
+2. `dart format --output=none --set-exit-if-changed lib test packages`.
+3. `flutter analyze`.
+4. `flutter test` — 5 тестов.
+5. `dart test` в `packages/tg_proxy_core` — 60 тестов.
+6. Копирование `.github/gradle/init-repositories.gradle.kts` в `$GRADLE_USER_HOME/init.d` — Maven Central раньше Gradle Plugin Portal (обход сбоя резолва Kotlin на runner).
+7. `flutter build apk --debug`.
 
-`release.yml` (tag `v*`):
+Android JUnit, Rust и iOS-тесты в CI не запускаются: iOS требует macOS и подписи, Rust/Android — отдельных джоб. Релиз собирается вручную: подписанный APK + `SHA256SUMS`, затем `gh release create`. `release.yml` нет.
 
-1. Полная сборка, подпись.
-2. APK по ABI + universal + `SHA256SUMS`.
-3. Source archive (MIT; полезно, хотя не обязательно).
-4. GitHub Release (draft → publish).
-5. Опционально: `fastlane`/страница релиза.
-
-Кэш: Gradle, Flutter, `.pub-cache`.
+Кэш: Flutter и `.pub-cache` через `subosito/flutter-action`; Gradle-кэш не настроен.
 
 ### 17.4. Версионирование
 
@@ -1042,20 +1030,22 @@ make core-bench # AES-CTR на текущем устройстве/хосте
 
 | Этап | Содержание | Состояние |
 |---|---|---|
-| 0. Каркас | base-flutter, package, Drift, 4 таба, CI | ✅ сделано, тег `stage-0` |
-| 1. Dart-ядро: крипто | AES-CTR/KDF, handshake, relay init, `MsgSplitter` | ✅ сделано, тег `stage-1` |
-| 2. Dart-ядро: транспорт | Raw WS, WS-пул, CF-балансер, worker pool, TCP-fallback, stats | ✅ сделано, тег `stage-2` |
-| 3. FakeTLS + Bot API | FakeTLS, локальный CONNECT 8081 | ✅ примитивы, тег `stage-3`; UI Bot API нет |
-| 4. Relay-сервер | `ProxyServer`, bridge, re-encryption | ✅ сделано, тег `stage-4` |
-| 5. Android-сервис | FGS, headless engine, каналы, DataStore, Keystore, tile, boot | ✅ сделано, тег `stage-5`; проверено на Android 16 |
-| 6A. Settings parity | DC→IP, secret, Bot API, proxy protocol, import/export, диагностика | ⏳ в работе |
-| 6B. Reliability | network restart, stall + TLS probe, auto-port, restart race | ⏳ не начато |
-| 6C. Logs/updates | файловые логи, export, GitHub update | ⏳ не начато |
+| 0. Каркас | base-flutter, package, Drift, 4 таба, CI | ✅ сделано (тег удалён) |
+| 1. Dart-ядро: крипто | AES-CTR/KDF, handshake, relay init, `MsgSplitter` | ✅ сделано |
+| 2. Dart-ядро: транспорт | Raw WS, WS-пул, CF-балансер, worker pool, TCP-fallback, stats | ✅ сделано |
+| 3. FakeTLS + Bot API | FakeTLS, локальный CONNECT 8081 | ✅ сделано, UI Bot API есть на Android |
+| 4. Relay-сервер | `ProxyServer`, bridge, re-encryption | ✅ сделано |
+| 5. Android-сервис | FGS, headless engine, каналы, DataStore, Keystore, tile, boot | ✅ сделано; проверено на Android 16 |
+| 6A. Settings parity | DC→IP, secret, Bot API, proxy protocol, import/export, диагностика | ✅ сделано |
+| 6B. Reliability | network restart, stall + probe, auto-port, restart race | ✅ сделано |
+| 6C. Logs/updates | логи, export, GitHub update check | ✅ проверка обновлений и export есть; файловых логов нет |
 | 7. H2 media | порт `cf_h2`/`h2_transport`, replay, backpressure | ⏳ phase 2 |
-| 8. Базовый слой | BasePage/BaseModel/ListModel из `34e5ba68`, рефакторинг экранов | ⏳ после 6A–6C |
-| 9. iOS | отдельный трек, Network Extension | ⏳ план в §21.3 |
+| 8. Базовый слой | BasePage/BaseModel/ListModel из `34e5ba68` | ⏳ отложено до стабилизации функционала |
+| 9. iOS | Network Extension + Rust-ядро | ✅ реализовано; подпись/установка вручную |
 
-Android MVP уже работает: собственный CF-домен, TLS/порт 80, старт/стоп, фон, логи. До паритета с AndMTProto остаются 6A–6C и H2; точный список — §21.2.
+Теги `stage-*` удалены при схлопывании истории; актуальны только `v0.2.1` и один коммит `TG WS Proxy 0.2.1`.
+
+Android 0.2.1 опубликован; iOS собирается локально из исходников и в Releases не входит.
 
 ---
 
@@ -1063,7 +1053,7 @@ Android MVP уже работает: собственный CF-домен, TLS/�
 
 | Риск | Влияние | Смягчение |
 |---|---|---|
-| MIT-совместимость | Нельзя потерять copyright Flowseal | `LICENSE`/`NOTICE`, заголовки в портированных файлах, source archive |
+| MIT-совместимость | Нельзя потерять copyright Flowseal | `LICENSE`/`NOTICE`, заголовки в портированных файлах, публичный репозиторий |
 | Производительность Dart AES-CTR | Не хватит скорости на медиа/больших файлах | Бенчмарк ≥10 МБ/с, 64 КБ чанки, FFI-примитив только по gate |
 | TLS-кривые (X25519) | Dart не даёт зафиксировать группу; DPI может рвать ClientHello | `no_secure`/порт 80, смена CF-домена, позже FFI-BoringSSL |
 | H2 media | 998 строк логики, replay/backpressure; риск затянуть MVP | Phase 2, флаг выключен по умолчанию; WS-медиа-домен как fallback |
@@ -1072,7 +1062,8 @@ Android MVP уже работает: собственный CF-домен, TLS/�
 | Raw WS/FakeTLS порт | Тонкие баги кадров/парсинга | Тест-векторы, фаззинг парсеров, интеграция с фейковым DC |
 | `bufferSizeKb` | Нельзя применить в Dart | Поле совместимости, скрыто в UI, задокументировано |
 | CF Worker | Единая точка отказа/rate limit | Пул доменов, свой worker, TCP fallback |
-| 16 KB | APK не ставится на новых устройствах | Проверка `libflutter.so`/APK в CI |
+| 16 KB | APK не ставится на новых устройствах | Проверять `libflutter.so`/APK вручную; шага в CI нет |
+| Третьи CF-домены | Метаданные идут через чужую инфраструктуру | Включить свой Worker/домен; сделать пул Flowseal явным opt-in |
 | `com.example` | Нельзя в Play, конфликты | Переименовать до релиза |
 | Обновления вне Play | Пользователь должен разрешить установку | Инструкция, fallback на браузер |
 | Права на base-flutter | Юридическая блокировка релиза | Подтвердить до публикации |
@@ -1081,32 +1072,25 @@ Android MVP уже работает: собственный CF-домен, TLS/�
 
 ### Открытые вопросы
 
-1. **GitHub owner/repo** для проверки обновлений и ссылки на исходники.
-2. **Свой CF Worker** или публичные домены? Для стабильности рекомендуется свой (инструкция в `CfWorker.md`).
-3. **Ключ подписи** и канал релизов (GitHub Releases / Telegram-канал).
-4. **Иконка/имя** приложения (RU/EN).
-5. **minSdk 29** оставляем или снижаем до 26?
-6. **x86_64** в релизе или только для debug/эмулятора?
-7. Публичный исходный репозиторий с первого дня или после стабилизации? (MIT не требует публичности.)
-8. Подтверждены ли права на распространение `base-flutter` под MIT?
-9. Принимаем ли **H2 media phase 2** (MVP без H2) или ждём полный паритет?
-10. Принимаем ли ограничение **buffer size** (поле есть, эффекта нет)?
-11. Достаточен ли gate **10 МБ/с** для AES-CTR, или сразу разрешаем FFI-примитив?
-12. Bot API — в MVP или отдельным этапом после H2?
+1. **Свой CF Worker** или встроенный список Flowseal? Сейчас по умолчанию включён сторонний пул доменов; для приватности рекомендуется свой Worker/домен.
+2. **Канал релизов** — только GitHub Releases; публиковать ли iOS IPA/TestFlight при наличии платного аккаунта.
+3. **minSdk 29** оставляем или снижаем до 26?
+4. **x86_64** в релизе или только для debug/эмулятора?
+5. Подтверждены ли права на распространение `base-flutter` под MIT?
+6. Принимаем ли ограничение **buffer size** (поле есть, эффекта нет)?
+7. Достаточен ли gate **10 МБ/с** для AES-CTR, или сразу разрешаем FFI-примитив?
+8. Нужен ли **Keychain** для iOS-секрета (требует keychain-sharing entitlement для app + extension)?
 
 ---
 
 ## 20. Что делать дальше
 
-Android:
-
-1. Закрыть 6A: DC→IP, показ/копирование/перегенерация секрета, Bot API switch+порт, proxy protocol, import/export, диагностика.
-2. Закрыть 6B: network restart, stall detector + TLS/plain probe, auto-port, гонка `updateSettings`.
-3. Закрыть 6C: файловые логи с ротацией, export/share, проверка обновлений GitHub.
-4. H2 media — только если после 6A–6C медиа всё ещё медленное; WS-медиа уже работает.
-5. Базовый слой `BasePage`/`BaseModel`/`ListModel` (коммит `34e5ba68`) — после функционала, без изменения поведения.
-
-iOS — отдельный трек §21.3; начинать с i0 (loopback + Network Extension spike), не с UI.
+1. **TLS по умолчанию** — сделано: iOS Rust проверяет сертификаты через `webpki-roots`, `NoVerify` только для явного SNI-fronting.
+2. **Оставшиеся улучшения безопасности** — опционально Keychain для iOS-секрета, замена implicit `tg://` intent на явный chooser, проверка подписи APK в приложении.
+3. **CF-домены** — сделать сторонний пул явным opt-in с предупреждением; по умолчанию — свой домен/Worker.
+4. **H2 media** — только если WS-медиа окажется медленным.
+5. **iOS** — подпись/установка вручную; при необходимости — TestFlight и автоматизация `resign.sh`.
+6. **Наблюдаемость** — опционально `cargo audit`/OSV и проверка prebuilt `libtgwsproxy.a` в CI.
 
 ---
 
@@ -1114,36 +1098,25 @@ iOS — отдельный трек §21.3; начинать с i0 (loopback + N
 
 ### 21.1. Android: что уже работает
 
-- Чистое Dart-ядро `packages/tg_proxy_core`: MTProto handshake, AES-CTR, splitter, raw WS, CF proxy/worker, TCP fallback, FakeTLS, Bot API, relay bridge. 59 тестов.
-- Kotlin FGS + headless `FlutterEngine` + `ProxyBridge`; DataStore, Keystore, уведомление, wakelock, QS tile, boot.
-- Flutter UI: Connection, Settings, Workers, Logs (Talker), Info; собственный CF-домен `wts-tbss-test.ru` проверен: `101 Switching Protocols` и на 80, и на 443 (обязателен заголовок `Sec-WebSocket-Protocol: binary`).
-- Старт/стоп, фон, переживание отсоединения UI; ping после устранения блокирующего direct WS — ~500 мс на тестовой сети.
+- Чистое Dart-ядро `packages/tg_proxy_core`: MTProto handshake, AES-CTR, splitter, raw WS, CF proxy/worker, TCP fallback, FakeTLS, Bot API, relay bridge. 60 тестов.
+- Kotlin FGS + headless `FlutterEngine` + `ProxyBridge`; DataStore, Android Keystore, уведомление, wakelock, QS tile, boot.
+- Flutter UI: Connection, Settings, Workers, Logs (Talker), Info; секрет показывается/копируется/перегенерируется; DC→IP, Bot API, proxy protocol, import/export, диагностика.
+- Network-change restart, stall detector, auto-port, update check через публичный GitHub API; APK скачивается в браузере.
+- Проверено на Android 16: старт/стоп, фон, переживание отсоединения UI.
 
 ### 21.2. Android: чего ещё нет
 
-- DC→IP editor в UI; секрет: показать/копировать/перегенерировать; Bot API UI; proxy protocol; import/export JSON; диагностика/батарея.
-- Network-change restart, stall detector + автоматический TLS/plain probe, auto-port при занятом 1443, гонка restart после `updateSettings`.
-- Файловые логи/ротация/export; GitHub update check/download/install.
+- Файловые логи с ротацией и export/share (сейчас in-memory Talker + EventChannel).
+- Автоматическая проверка SHA-256/подписи APK при обновлении — сейчас только allowlist официального URL и парсер `SHA256SUMS`.
 - H2 media (phase 2); `bufferSizeKb` — только совместимость.
-- Базовый слой `BasePage`/`BaseModel`/`ListModel` (см. §7.6) — рефакторинг после 6A–6C.
+- Android instrumentation-тесты сервиса; в CI Android unit-тесты не запускаются.
 
-### 21.3. iOS: отдельный трек
+### 21.3. iOS: реализация
 
-iOS не может "то же самое": нет foreground service, приложение в фоне засыпает через ~30 с. Варианты:
-
-1. **Foreground-only** Flutter/Dart — работает только пока приложение открыто; 1–2 недели; для Telegram бесполезно.
-2. **Network Extension** (`NEPacketTunnelProvider`) с платным Apple Developer — always-on, но relay должен быть на Swift/C: Flutter/Dart VM не влезает в лимит памяти extension. Ориентир 2–3 месяца; установка через Xcode/Ad Hoc, без App Store.
-3. **Remote MTProto proxy** (VPS + mtg) + маленькое приложение-генератор ссылки — 1–2 дня, работает в фоне, но это не локальный прокси.
-
-План i0–i5:
-
-| Этап | Содержание | Оценка |
-|---|---|---|
-| i0 | Xcode app + `NEPacketTunnelProvider`, loopback `127.0.0.1:1443`, проверить, доходит ли Telegram iOS | 2–4 дня |
-| i1 | Swift relay MVP: handshake/AES-CTR/splitter, WS к `kws*.wts-tbss-test.ru` 80/443, TCP fallback | 2–3 недели |
-| i2 | `NETunnelProviderManager`, VPN profile, App Group, Keychain | 1 неделя |
-| i3 | Flutter UI reuse: `ProxyRepository`, iOS channel, `tg://proxy`, логи | 1 неделя |
-| i4 | Паритет: свой CF-домен, Worker, FakeTLS, DC→IP; H2 только при необходимости | 1–2 недели |
-| i5 | Установка Xcode/Ad Hoc, продление provisioning раз в год | — |
-
-Главный риск — сможет ли Telegram iOS подключиться к listener внутри Network Extension через loopback. Если i0 это не подтвердит, локальный вариант на iOS закрывается. Платный Apple Developer снимает блокер с entitlement, но не с памяти extension и не с ограничений ОС.
+- `NEPacketTunnelProvider` (`ios/TgwsTunnel`) с Rust-ядром (`ios/RustCore`, GPLv3); listener на `127.0.0.1:1443`.
+- `NETunnelProviderManager` + VPN profile; App Group `group.com.whitetigersoft.tgwsproxy` для настроек и логов.
+- Общий Flutter UI через `IosProxyBridge`; каналы совпадают с Android.
+- Секрет генерируется случайно (`SecRandomCopyBytes`), одноразовая миграция со старой публичной константы с баннером в UI; хранится в App Group `UserDefaults`, не в Keychain.
+- TLS проверяется (`webpki-roots`); `NoVerify` — только для явного SNI-fronting; `no_secure` по умолчанию выключен.
+- Bot API не поддерживается; сборка/подпись/установка вручную (`flutter build ios --release` → `ios/scripts/resign.sh` → `devicectl`), в Releases не входит.
+- Ограничения: нет Keychain и фонового автозапуска приложения, нет Swift-тестов в CI (2 RunnerTests запускаются вручную на устройстве), баннер миграции визуально не проверялся.
