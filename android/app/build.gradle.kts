@@ -57,6 +57,17 @@ android {
         }
     }
 
+    // A release must never leave this machine signed with the debug key.
+    gradle.taskGraph.whenReady {
+        val releaseRequested = allTasks.any { it.name.contains("Release") }
+        if (releaseRequested && !keystorePropertiesFile.exists()) {
+            throw GradleException(
+                "Release signing requires android/key.properties and a keystore. " +
+                    "Use --debug for local builds.",
+            )
+        }
+    }
+
     packaging {
         jniLibs {
             useLegacyPackaging = false
@@ -80,4 +91,5 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.7")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    testImplementation("junit:junit:4.13.2")
 }

@@ -28,6 +28,23 @@ class UpdateCheckException implements Exception {
 class UpdateChecker {
   static const repository = 'waslost0/tgwsproxy';
   static const releasesPage = 'https://github.com/$repository/releases/latest';
+  static const _downloadPrefix =
+      'https://github.com/$repository/releases/download/';
+
+  /// Only release assets served from this repository may be opened.
+  static bool isOfficialDownload(String url) =>
+      url.startsWith(_downloadPrefix);
+
+  /// Extracts the SHA-256 for [assetName] from a `SHA256SUMS` body.
+  static String? parseSha256(String sums, String assetName) {
+    for (final line in const LineSplitter().convert(sums)) {
+      final parts = line.trim().split(RegExp(r'\s+'));
+      if (parts.length >= 2 && parts.last == assetName) {
+        return parts.first.toLowerCase();
+      }
+    }
+    return null;
+  }
 
   static Future<ReleaseInfo> latest() async {
     final response = await http

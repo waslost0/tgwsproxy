@@ -5,7 +5,7 @@ use base64::Engine;
 use byteorder::{BigEndian, ByteOrder};
 use rand::RngCore;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::{ClientConfig, DigitallySignedStruct, SignatureScheme};
+use rustls::{ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme};
 use rustls_pki_types::{CertificateDer, ServerName, UnixTime};
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -32,9 +32,12 @@ pub const MAX_MESSAGE_LEN: u64 = 16 * 1024 * 1024;
 const MAX_FRAME_PAYLOAD: u64 = 16 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
-// TLS config: InsecureSkipVerify + session cache (как в Go)
+// TLS config: verified by default, NoVerify only for SNI fronting + cache
 // ---------------------------------------------------------------------------
 
+/// Used only when the caller dials a different SNI than the Host header
+/// (domain fronting). The Cloudflare edge presents the fronting domain's
+/// certificate, so regular hostname verification cannot succeed there.
 #[derive(Debug)]
 struct NoVerify;
 
@@ -86,8 +89,21 @@ impl ServerCertVerifier for NoVerify {
 
 use once_cell::sync::Lazy;
 
-// Глобальный TLS-конфиг с session resumption cache (аналог tls.NewLRUClientSessionCache(100))
+// Проверяет цепочку и hostname по корневым сертификатам Mozilla. Это
+// основной путь: CF-домены и Worker'ы имеют валидные сертификаты.
 static TLS_CONFIG: Lazy<Arc<ClientConfig>> = Lazy::new(|| {
+    let mut roots = RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let mut cfg = ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    cfg.resumption = rustls::client::Resumption::in_memory_sessions(100);
+    Arc::new(cfg)
+});
+
+// Отдельный контекст только для fronting (SNI != Host), где проверка
+// hostname невозможна по определению.
+static TLS_CONFIG_FRONTING: Lazy<Arc<ClientConfig>> = Lazy::new(|| {
     let mut cfg = ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(NoVerify))
@@ -95,10 +111,6 @@ static TLS_CONFIG: Lazy<Arc<ClientConfig>> = Lazy::new(|| {
     cfg.resumption = rustls::client::Resumption::in_memory_sessions(100);
     Arc::new(cfg)
 });
-
-// Отдельный контекст для fronting (check_hostname=False в оригинале).
-// На практике оба контекста NoVerify; разделение сохранено для паритета.
-static TLS_CONFIG_FRONTING: Lazy<Arc<ClientConfig>> = Lazy::new(|| TLS_CONFIG.clone());
 
 // ---------------------------------------------------------------------------
 // WsHandshakeError
@@ -958,5 +970,18 @@ pub async fn connect_fronted(ip: &str, domain: &str, path: &str) -> Option<RawWe
             Some(ws)
         }
         Err(_) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tls_is_secure_by_default() {
+        assert!(!DISABLE_SECURE.load(Ordering::Relaxed));
+        // Build the verified config; a broken root store panics here instead
+        // of silently accepting any certificate on the wire.
+        let _ = TLS_CONFIG.clone();
     }
 }

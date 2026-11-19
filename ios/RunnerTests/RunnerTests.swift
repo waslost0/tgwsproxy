@@ -1,13 +1,20 @@
-import Flutter
 import Testing
-import UIKit
+@testable import Runner
 
 struct RunnerTests {
-
-  func testExample() {
-    // If you add code to the Runner application, consider adding tests here.
-    // See https://developer.apple.com/xcode/swift-testing/ for more information about using
-    // Swift Testing.
+  @Test func generatedSecretIsRandomHex() {
+    let secret = IosProxySettings.generatedSecret()
+    #expect(secret.count == 32)
+    #expect(secret.allSatisfy { $0.isHexDigit })
+    #expect(secret != IosProxySettings.legacySecret)
+    #expect(IosProxySettings.isValidSecret(secret))
+    #expect(secret != IosProxySettings.generatedSecret())
   }
 
+  @Test func rejectsMalformedSecrets() {
+    #expect(!IosProxySettings.isValidSecret(""))
+    #expect(!IosProxySettings.isValidSecret("abc"))
+    #expect(!IosProxySettings.isValidSecret(String(repeating: "z", count: 32)))
+    #expect(!IosProxySettings.isValidSecret(String(repeating: "0", count: 31)))
+  }
 }

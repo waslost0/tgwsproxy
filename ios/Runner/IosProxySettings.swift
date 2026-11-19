@@ -18,7 +18,7 @@ struct IosProxySettings: Codable {
   var cfWorkerEnabled = false
   var fakeTlsDomain = ""
   var forceTestDc = false
-  var noSecure = true
+  var noSecure = false
   var proxyProtocol = false
   var botApiEnabled = false
   var botApiPort = 8081

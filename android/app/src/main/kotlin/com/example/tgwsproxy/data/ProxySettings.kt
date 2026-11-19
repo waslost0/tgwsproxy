@@ -96,8 +96,13 @@ class SettingsStore(private val context: Context) {
     /** Applies a partial update from the Flutter MethodChannel. */
     suspend fun update(values: Map<String, Any?>) {
         context.proxyDataStore.edit { prefs ->
-            values["host"]?.let { prefs[KEY_HOST] = it.toString() }
-            values["port"]?.let { prefs[KEY_PORT] = asInt(it, prefs[KEY_PORT] ?: 1443) }
+            values["host"]?.toString()?.takeIf(ProxyAddress::isValidHost)?.let {
+                prefs[KEY_HOST] = it
+            }
+            values["port"]?.let {
+                val port = asInt(it, prefs[KEY_PORT] ?: 1443)
+                if (ProxyAddress.isValidPort(port)) prefs[KEY_PORT] = port
+            }
             values["dcRedirects"]?.let { prefs[KEY_DC] = encodeDcMap(it) }
             values["poolSize"]?.let { prefs[KEY_POOL] = asInt(it, prefs[KEY_POOL] ?: 4) }
             values["cfproxyEnabled"]?.let { prefs[KEY_CF] = asBool(it, true) }
@@ -109,7 +114,9 @@ class SettingsStore(private val context: Context) {
             values["noSecure"]?.let { prefs[KEY_NO_SECURE] = asBool(it, false) }
             values["proxyProtocol"]?.let { prefs[KEY_PROXY_PROTOCOL] = asBool(it, false) }
             values["botApiEnabled"]?.let { prefs[KEY_BOT_API] = asBool(it, true) }
-            values["botApiPort"]?.let { prefs[KEY_BOT_PORT] = asInt(it, 8081) }
+            values["botApiPort"]?.let {
+                prefs[KEY_BOT_PORT] = asInt(it, 8081).coerceIn(1, 65535)
+            }
             values["autoStart"]?.let { prefs[KEY_AUTO_START] = asBool(it, true) }
             values["checkUpdates"]?.let { prefs[KEY_UPDATES] = asBool(it, true) }
             values["autoPortPicked"]?.let { prefs[KEY_AUTO_PORT] = asBool(it, false) }

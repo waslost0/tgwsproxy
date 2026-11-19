@@ -86,7 +86,7 @@ enum NativeProxy {
     }
     let domain = configuration["domain"] as? String ?? ""
     let poolSize = (configuration["poolSize"] as? NSNumber)?.int32Value ?? 4
-    let noSecure = configuration["noSecure"] as? Bool ?? true
+    let noSecure = configuration["noSecure"] as? Bool ?? false
     let cfproxy = configuration["cfproxyEnabled"] as? Bool ?? true
     let fakeTls = configuration["fakeTlsDomain"] as? String ?? ""
     let forceTest = configuration["forceTestDc"] as? Bool ?? false

@@ -160,8 +160,13 @@ class RawWebSocket implements ProxyTransport {
       await socket.flush();
 
       final lines = <String>[];
+      var headerBytes = 0;
       while (true) {
         final line = await reader.readLine(timeout);
+        headerBytes += line.length + 2;
+        if (headerBytes > 64 * 1024) {
+          throw const FormatException('HTTP headers too large');
+        }
         if (line.isEmpty) break;
         lines.add(line);
       }
