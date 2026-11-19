@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:talker/talker.dart';
 import 'package:tg_proxy_core/tg_proxy_core.dart';
 
 /// macOS counterpart of the Kotlin service: settings live in a JSON file next
@@ -40,16 +41,19 @@ class MacProxyEngine {
     'cfWorkerEnabled': false,
     'fakeTlsDomain': '',
     'forceTestDc': false,
-    'noSecure': false,
+    'noSecure': true,
     'proxyProtocol': false,
     'botApiEnabled': false,
     'botApiPort': 8081,
     'autoStart': false,
     'checkUpdates': true,
+    'settingsVersion': 1,
     'platform': 'macos',
   };
 
   String _secret = '';
+
+  Stream<TalkerData> get logs => proxyTalker.stream;
 
   String get secret => _secret;
   bool get isRunning => _engine?.isRunning == true;
@@ -62,9 +66,11 @@ class MacProxyEngine {
     await dir.create(recursive: true);
     _file = File(p.join(dir.path, 'proxy_settings.json'));
     if (await _file!.exists()) {
+      var version = 0;
       try {
         final raw = jsonDecode(await _file!.readAsString());
         if (raw is Map) {
+          version = _asInt(raw['settingsVersion']) ?? 0;
           for (final entry in raw.entries) {
             if (entry.key == 'secret') continue;
             if (_settings.containsKey(entry.key)) {
@@ -75,6 +81,13 @@ class MacProxyEngine {
         }
       } catch (_) {
         // A corrupt file is replaced with defaults below.
+      }
+      // Desktop upstream works over plain HTTP; TLS to Cloudflare is blocked
+      // on many ISPs. Existing macOS settings keep the old insecure default.
+      if (version < 1) {
+        _settings['noSecure'] = true;
+        _settings['settingsVersion'] = 1;
+        await _save();
       }
     }
     final valid =

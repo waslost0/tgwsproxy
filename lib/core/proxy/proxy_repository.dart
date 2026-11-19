@@ -29,6 +29,7 @@ class ProxyRepository extends ChangeNotifier {
 
   final Talker talker = Talker(settings: TalkerSettings(maxHistoryItems: 2000));
   StreamSubscription<dynamic>? _subscription;
+  StreamSubscription<TalkerData>? _macLogs;
   MacProxyEngine? _mac;
   bool _initialized = false;
 
@@ -44,6 +45,17 @@ class ProxyRepository extends ChangeNotifier {
         state = ProxySnapshot.fromMap(map);
         notifyListeners();
       };
+      _macLogs = mac.logs.listen((data) {
+        final name = data.logLevel?.name;
+        final level = switch (name) {
+          'error' => LogLevel.error,
+          'warning' => LogLevel.warning,
+          'debug' || 'verbose' => LogLevel.debug,
+          'critical' => LogLevel.critical,
+          _ => LogLevel.info,
+        };
+        talker.log(data.displayMessage, logLevel: level);
+      });
       _mac = mac;
       await refresh();
       return;
@@ -301,6 +313,7 @@ class ProxyRepository extends ChangeNotifier {
   @override
   void dispose() {
     _subscription?.cancel();
+    _macLogs?.cancel();
     final mac = _mac;
     if (mac != null) unawaited(mac.dispose());
     super.dispose();

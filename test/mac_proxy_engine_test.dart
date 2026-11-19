@@ -50,6 +50,15 @@ void main() {
     expect(json['platform'], 'macos');
   });
 
+  test('migrates old settings to the working plain transport', () async {
+    await File('${dir.path}/proxy_settings.json')
+        .writeAsString('{"noSecure":false}');
+    final engine = MacProxyEngine(directory: dir.path);
+    await engine.load();
+    final settings = (await engine.bootstrap())['settings'] as Map;
+    expect(settings['noSecure'], isTrue);
+  });
+
   test('starts and stops the loopback listener', () async {
     final engine = MacProxyEngine(directory: dir.path);
     await engine.load();

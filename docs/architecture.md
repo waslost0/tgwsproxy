@@ -1124,8 +1124,8 @@ Android 0.2.1 опубликован; iOS собирается локально 
 ### 21.4. macOS: реализация
 
 - `macos/` — Flutter-приложение, общий 4-табовый UI; Dart-ядро `tg_proxy_core` работает в процессе UI-изолята (`MacProxyEngine`), без MethodChannel и Network Extension.
-- Настройки и секрет — `Application Support` в sandbox-контейнере (`proxy_settings.json`); секрет генерируется `Random.secure`, не в Keychain.
-- Loopback `127.0.0.1:1443`, ссылка `tg://proxy`, открытие Telegram через `url_launcher`.
+- Настройки и секрет — `Application Support` в sandbox-контейнере (`proxy_settings.json`); секрет генерируется `Random.secure`, не в Keychain. По умолчанию `noSecure=true`: TLS к встроенным CF-доменам часто блокируется, plain ws на порту 80 является рабочим маршрутом desktop-версии. Старые настройки мигрируют на plain один раз.
+- Loopback `127.0.0.1:1443`, ссылка `tg://proxy`, открытие Telegram через `url_launcher`. Логи ядра (`proxyTalker`) транслируются в экран «Логи».`
 - Entitlements: `network.client`, `network.server`, `files.user-selected.read-only`; окно закрывается без завершения приложения, Dock возвращает окно.
 - `ProxyRepository` выбирает Mac-бэкенд по `Platform.isMacOS`; Android/iOS-каналы не менялись. Скрыты «Энергосбережение» и автозапуск, диагностика показывает macOS, обновление открывает страницу релизов.
 - Ограничения: нет Keychain, автозапуска при входе и подписи/нотаризации; Bot API требует CF Worker; тесты — 4 unit-теста `MacProxyEngine` (секрет, импорт/экспорт, start/stop listener).

@@ -128,6 +128,8 @@ open "build/macos/Build/Products/Release/TG WS Proxy.app"
 ```
 
 - Прокси слушает `127.0.0.1:1443`; ссылка и настройки — как на Android.
+- По умолчанию включён plain WebSocket (порт 80), как в desktop-версии Flowseal: TLS к встроенным CF-доменам на многих провайдерах блокируется. Если у тебя TLS работает, выключи «Без TLS (порт 80)» в настройках.
+- Если Telegram показывает `connecting...`, удали старую запись `127.0.0.1:1443` и добавь заново через «Открыть в Telegram» — секрет у нового macOS-билда свой.
 - Настройки и секрет лежат в `~/Library/Containers/com.whitetigersoft.tgwsproxy/Data/Library/Application Support/com.whitetigersoft.tgwsproxy/proxy_settings.json`. Секрет не хранится в Keychain.
 - Закрытие окна не завершает приложение; клик по иконке в Dock открывает его снова.
 - Автозапуск при входе и Bot API без Cloudflare Worker не поддерживаются.
