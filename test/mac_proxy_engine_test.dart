@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tgwsproxy/core/proxy/mac_proxy_engine.dart';
+import 'package:tgwsproxy/core/proxy/data/mac_proxy_engine.dart';
 
 void main() {
   late Directory dir;
@@ -30,14 +30,14 @@ void main() {
     await engine.load();
 
     expect(await engine.importSettings('{"host":"evil.example"}'), isTrue);
-    var settings = (await engine.bootstrap())['settings'] as Map;
+    var settings = (await engine.bootstrap()).settings;
     expect(settings['host'], '127.0.0.1');
 
     expect(
       await engine.importSettings('{"host":"127.0.0.2","port":1234}'),
       isTrue,
     );
-    settings = (await engine.bootstrap())['settings'] as Map;
+    settings = (await engine.bootstrap()).settings;
     expect(settings['host'], '127.0.0.2');
     expect(settings['port'], 1234);
   });
@@ -45,7 +45,7 @@ void main() {
   test('export does not include the secret', () async {
     final engine = MacProxyEngine(directory: dir.path);
     await engine.load();
-    final json = jsonDecode(engine.exportSettings()) as Map;
+    final json = jsonDecode(await engine.exportSettings()) as Map;
     expect(json.containsKey('secret'), isFalse);
     expect(json['platform'], 'macos');
   });
@@ -55,7 +55,7 @@ void main() {
         .writeAsString('{"noSecure":false}');
     final engine = MacProxyEngine(directory: dir.path);
     await engine.load();
-    final settings = (await engine.bootstrap())['settings'] as Map;
+    final settings = (await engine.bootstrap()).settings;
     expect(settings['noSecure'], isTrue);
   });
 

@@ -1,26 +1,32 @@
-// Purpose: Flutter-side client for the Android proxy service control channel.
+// Purpose: presentation facade over the platform proxy backends.
 import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:talker/talker.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import 'mac_proxy_engine.dart';
-import 'proxy_models.dart';
+import 'data/channel_proxy_backend.dart';
+import 'data/mac_proxy_engine.dart';
+import 'domain/proxy_backend.dart';
+import 'domain/proxy_models.dart';
 
-/// Bridges the UI to the platform proxy backend: Kotlin `ProxyBridge` on
-/// Android/iOS, or an in-process [MacProxyEngine] on macOS.
+/// Single state holder the UI talks to.
 ///
-/// The constructor is intentionally side-effect free: widget tests can create
-/// it without a platform channel. [init] is called from `main`.
+/// Android/iOS use a [ChannelProxyBackend]; macOS runs [MacProxyEngine]
+/// in-process. Tests may inject any [ProxyBackend].
 class ProxyRepository extends ChangeNotifier {
-  static const _channel = MethodChannel('com.example.tgwsproxy/proxy');
-  static const _events = EventChannel('com.example.tgwsproxy/proxy_events');
+  ProxyRepository({ProxyBackend? backend}) {
+    _backend = backend;
+  }
+
   static const _menuChannel = MethodChannel(
     'com.whitetigersoft.tgwsproxy/menu',
   );
+
+  ProxyBackend? _backend;
+  StreamSubscription<Map<String, dynamic>>? _subscription;
+  bool _initialized = false;
 
   ProxySnapshot state = const ProxySnapshot();
   Map<String, dynamic> settings = <String, dynamic>{};
@@ -31,121 +37,79 @@ class ProxyRepository extends ChangeNotifier {
   bool secretMigrated = false;
 
   final Talker talker = Talker(settings: TalkerSettings(maxHistoryItems: 2000));
-  StreamSubscription<dynamic>? _subscription;
-  StreamSubscription<TalkerData>? _macLogs;
-  MacProxyEngine? _mac;
-  bool _initialized = false;
 
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
 
-    // macOS has no platform channel: the Dart core runs in this isolate.
-    if (Platform.isMacOS && !Platform.environment.containsKey('FLUTTER_TEST')) {
-      final mac = MacProxyEngine();
-      await mac.load();
-      mac.onState = (map) {
-        state = ProxySnapshot.fromMap(map);
-        notifyListeners();
-        _notifyMenu();
-      };
-      _macLogs = mac.logs.listen((data) {
-        final name = data.logLevel?.name;
-        final level = switch (name) {
-          'error' => LogLevel.error,
-          'warning' => LogLevel.warning,
-          'debug' || 'verbose' => LogLevel.debug,
-          'critical' => LogLevel.critical,
-          _ => LogLevel.info,
-        };
-        talker.log(data.displayMessage, logLevel: level);
-      });
-      _mac = mac;
-      _menuChannel.setMethodCallHandler(_handleMenuCall);
-      await refresh();
-      return;
+    var backend = _backend;
+    if (backend == null) {
+      if (_isMacDesktop) {
+        final mac = MacProxyEngine();
+        await mac.load();
+        backend = mac;
+      } else {
+        backend = ChannelProxyBackend();
+      }
     }
+    _backend = backend;
 
-    // The event stream carries state/stats updates while the service runs.
-    _subscription = _events.receiveBroadcastStream().listen(
+    _subscription = backend.events.listen(
       _onEvent,
       onError: (Object err) {
         error = err.toString();
         notifyListeners();
       },
     );
+    if (backend is MacProxyEngine) {
+      _menuChannel.setMethodCallHandler(_handleMenuCall);
+    }
     await refresh();
   }
 
+  bool get _isMacDesktop =>
+      Platform.isMacOS && !Platform.environment.containsKey('FLUTTER_TEST');
+
   Future<void> refresh() async {
-    if (_mac != null) {
-      _applyBootstrap(ProxyBootstrap.fromMap(await _mac!.bootstrap()));
-      return;
-    }
     try {
-      final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-        'getBootstrap',
-      );
-      if (raw == null) return;
-      _applyBootstrap(ProxyBootstrap.fromMap(raw));
+      final bootstrap = await _requireBackend().bootstrap();
+      _applyBootstrap(bootstrap);
     } on MissingPluginException {
-      // Desktop/widget tests have no Android bridge; keep the local defaults.
+      // Widget tests and unsupported platforms keep local defaults.
     } on PlatformException catch (err) {
       error = err.message ?? err.code;
       notifyListeners();
     }
   }
 
-  Future<void> start() => _mac != null ? _runMac(_mac!.start) : _run('start');
+  Future<void> start() => _run((backend) => backend.start());
 
-  Future<void> stop() => _mac != null ? _runMac(_mac!.stop) : _run('stop');
+  Future<void> stop() => _run((backend) => backend.stop(), stopping: true);
 
-  Future<void> restart() =>
-      _mac != null ? _runMac(_mac!.restart) : _run('restart');
+  Future<void> restart() => _run((backend) => backend.restart());
 
   Future<void> updateSettings(Map<String, dynamic> next) async {
-    if (_mac != null) {
-      try {
-        await _mac!.updateSettings(next);
-      } catch (err) {
-        error = err.toString();
-      }
-      await refresh();
-      return;
-    }
     try {
-      await _channel.invokeMethod<void>('updateSettings', next);
-      settings = Map<String, dynamic>.from(next);
-      notifyListeners();
+      await _requireBackend().updateSettings(next);
+      settings = <String, dynamic>{...settings, ...next};
       await refresh();
-    } on PlatformException catch (err) {
-      error = err.message ?? err.code;
+    } catch (err) {
+      error = err.toString();
       notifyListeners();
     }
   }
 
   Future<void> regenerateSecret() async {
-    if (_mac != null) {
-      await _mac!.regenerateSecret();
-      await refresh();
-      return;
-    }
-    await _run('regenerateSecret');
-    await refresh();
+    await _run((backend) async {
+      await backend.regenerateSecret();
+    });
   }
 
   Future<void> acknowledgeSecretMigration() async {
-    if (_mac != null) {
-      secretMigrated = false;
-      notifyListeners();
-      return;
-    }
     try {
-      await _channel.invokeMethod<void>('acknowledgeSecretMigration');
-    } on MissingPluginException {
-      // Android has no migration state.
-    } on PlatformException catch (err) {
-      error = err.message ?? err.code;
+      await _requireBackend().acknowledgeSecretMigration();
+    } catch (err) {
+      error = err.toString();
       notifyListeners();
       return;
     }
@@ -154,146 +118,105 @@ class ProxyRepository extends ChangeNotifier {
   }
 
   Future<void> openInTelegram() async {
-    if (_mac != null) {
-      try {
-        await launchUrl(
-          Uri.parse(_mac!.link()),
-          mode: LaunchMode.externalApplication,
-        );
-      } catch (err) {
-        error = err.toString();
-        notifyListeners();
-      }
-      return;
-    }
     try {
-      await _channel.invokeMethod<void>('openInTelegram');
-    } on PlatformException catch (err) {
-      error = err.message ?? err.code;
+      await _requireBackend().openInTelegram();
+    } catch (err) {
+      error = err.toString();
       notifyListeners();
     }
   }
 
   Future<String> getSecret() async {
-    if (_mac != null) {
-      secret = _mac!.secret;
+    try {
+      secret = await _requireBackend().getSecret();
       notifyListeners();
-      return secret;
-    }
-    final value = await _channel.invokeMethod<String>('getSecret');
-    if (value != null) {
-      secret = value;
+    } catch (err) {
+      error = err.toString();
       notifyListeners();
     }
     return secret;
   }
 
   Future<String> getProxyLink() async {
-    if (_mac != null) return _mac!.link();
-    final value = await _channel.invokeMethod<String>('getProxyLink');
-    return value ?? link;
+    try {
+      return await _requireBackend().getProxyLink();
+    } catch (err) {
+      error = err.toString();
+      notifyListeners();
+      return link;
+    }
   }
 
   Future<String> exportSettings() async {
-    if (_mac != null) return _mac!.exportSettings();
-    final value = await _channel.invokeMethod<String>('exportSettings');
-    return value ?? '';
+    try {
+      return await _requireBackend().exportSettings();
+    } catch (err) {
+      error = err.toString();
+      notifyListeners();
+      return '';
+    }
   }
 
   Future<bool> importSettings(String raw) async {
-    if (_mac != null) {
-      final ok = await _mac!.importSettings(raw);
+    try {
+      final ok = await _requireBackend().importSettings(raw);
       await refresh();
       return ok;
-    }
-    try {
-      final ok = await _channel.invokeMethod<bool>('importSettings', raw);
-      await refresh();
-      return ok ?? false;
-    } on PlatformException catch (err) {
-      error = err.message ?? err.code;
+    } catch (err) {
+      error = err.toString();
       notifyListeners();
       return false;
     }
   }
 
   Future<Map<String, dynamic>> getDiagnostics() async {
-    if (_mac != null) return _mac!.diagnostics();
-    final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-      'getDiagnostics',
-    );
-    return raw == null ? <String, dynamic>{} : Map<String, dynamic>.from(raw);
+    try {
+      return await _requireBackend().getDiagnostics();
+    } catch (err) {
+      error = err.toString();
+      notifyListeners();
+      return <String, dynamic>{};
+    }
   }
 
   Future<void> openBatterySettings() async {
-    if (_mac != null) return;
     try {
-      await _channel.invokeMethod<void>('openBatterySettings');
-    } on PlatformException catch (err) {
-      error = err.message ?? err.code;
+      await _requireBackend().openBatterySettings();
+    } catch (err) {
+      error = err.toString();
       notifyListeners();
     }
   }
 
-  Future<void> _runMac(Future<void> Function() action) async {
-    error = null;
-    try {
-      await action();
-    } catch (err) {
-      error = err.toString();
+  ProxyBackend _requireBackend() {
+    final backend = _backend;
+    if (backend == null) {
+      throw StateError('ProxyRepository.init() was not called');
     }
-    await refresh();
+    return backend;
   }
 
-  Future<dynamic> _handleMenuCall(MethodCall call) async {
-    switch (call.method) {
-      case 'toggle':
-        if (state.running) {
-          await stop();
-        } else {
-          await start();
-        }
-      case 'openTelegram':
-        await openInTelegram();
-      case 'sync':
-        _notifyMenu();
-    }
-    return null;
-  }
-
-  void _notifyMenu() {
-    final mac = _mac;
-    if (mac == null) return;
-    unawaited(
-      _menuChannel
-          .invokeMethod<void>('state', <String, dynamic>{
-            'running': state.running,
-            'starting': state.starting,
-            'port': state.port,
-            'link': link.isNotEmpty ? link : mac.link(),
-          })
-          .catchError((_) {}),
-    );
-  }
-
-  Future<void> _run(String method) async {
+  Future<void> _run(
+    Future<void> Function(ProxyBackend backend) action, {
+    bool stopping = false,
+  }) async {
     error = null;
     state = ProxySnapshot(
-      running: method == 'stop' ? false : state.running,
-      starting: method != 'stop',
+      running: stopping ? false : state.running,
+      starting: !stopping,
       host: state.host,
       port: state.port,
       coreVersion: state.coreVersion,
     );
     notifyListeners();
     try {
-      await _channel.invokeMethod<void>(method);
+      await action(_requireBackend());
       await refresh();
     } on MissingPluginException {
       state = const ProxySnapshot();
       notifyListeners();
-    } on PlatformException catch (err) {
-      error = err.message ?? err.code;
+    } catch (err) {
+      error = err.toString();
       state = ProxySnapshot(
         host: state.host,
         port: state.port,
@@ -304,17 +227,13 @@ class ProxyRepository extends ChangeNotifier {
     }
   }
 
-  void _onEvent(dynamic event) {
-    if (event is! Map) return;
+  void _onEvent(Map<String, dynamic> event) {
     final type = event['type'];
     if (type == 'state') {
-      // Kotlin sends a flat map with the `type` discriminator plus state
-      // fields; older bridge versions nested it under `state`.
       final raw = event['state'] is Map ? event['state'] : event;
-      if (raw is Map) {
-        state = ProxySnapshot.fromMap(raw);
-        notifyListeners();
-      }
+      state = ProxySnapshot.fromMap(raw as Map);
+      notifyListeners();
+      unawaited(_notifyMenu());
     } else if (type == 'log') {
       _onLog(event);
     } else if (type == 'error') {
@@ -344,18 +263,49 @@ class ProxyRepository extends ChangeNotifier {
     engineVersion = bootstrap.engineVersion;
     secretMigrated = bootstrap.secretMigrated;
     notifyListeners();
-    _notifyMenu();
+    unawaited(_notifyMenu());
+  }
+
+  Future<dynamic> _handleMenuCall(MethodCall call) async {
+    switch (call.method) {
+      case 'toggle':
+        if (state.running) {
+          await stop();
+        } else {
+          await start();
+        }
+      case 'openTelegram':
+        await openInTelegram();
+      case 'sync':
+        await _notifyMenu();
+    }
+    return null;
+  }
+
+  Future<void> _notifyMenu() async {
+    final backend = _backend;
+    if (backend is! MacProxyEngine) return;
+    final proxyLink = link.isNotEmpty ? link : await backend.getProxyLink();
+    try {
+      await _menuChannel.invokeMethod<void>('state', <String, dynamic>{
+        'running': state.running,
+        'starting': state.starting,
+        'port': state.port,
+        'link': proxyLink,
+      });
+    } on MissingPluginException {
+      // Tests and non-macOS hosts have no menu channel.
+    }
   }
 
   @override
   void dispose() {
     _subscription?.cancel();
-    _macLogs?.cancel();
-    final mac = _mac;
-    if (mac != null) {
+    if (_backend is MacProxyEngine) {
       _menuChannel.setMethodCallHandler(null);
-      unawaited(mac.dispose());
     }
+    final backend = _backend;
+    if (backend != null) unawaited(backend.dispose());
     super.dispose();
   }
 }

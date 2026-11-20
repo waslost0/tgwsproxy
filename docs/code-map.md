@@ -46,7 +46,7 @@
 | `lib/core/model/app_model.dart` | Глобальное состояние UI: `AppDatabase`, тема, загрузка/сохранение `theme_mode`, закрытие БД в `dispose`. |
 | `lib/core/db/app_database.dart` | Drift-БД `app.db`, таблица `app_preferences(key,value)`, `read/write`; только UI-настройки (тема, onboarding, last tab). Прокси-настройки здесь не хранятся. |
 | `lib/core/db/app_database.g.dart` | Сгенерированный Drift-код. Не редактировать; пересобирать `make gen`. |
-| `lib/core/router/app_router.dart` | `GoRouter` + `StatefulShellRoute.indexedStack`, 4 ветки: `/connection`, `/settings`, `/logs`, `/info`. |
+| `lib/app_router.dart` | `GoRouter` + `StatefulShellRoute.indexedStack`, 4 ветки: `/connection`, `/settings`, `/logs`, `/info`. |
 | `lib/core/ui/main_shell.dart` | `NavigationBar` с четырьмя разделами и `NavigationShell`. |
 | `lib/core/theme/app_theme.dart` | Material 3 тема, seed `0xFF2AABEE`, светлая/тёмная схемы, карточки, navigation bar. |
 | `lib/features/connection/connection_page.dart` | Экран подключения: большая кнопка старт/стоп, статус, статистика, ошибка, шаги подключения. |
@@ -144,7 +144,10 @@
 | `.../service/ProxyController.kt` | Intent-обёртки start/stop/restart для Activity, tile и boot. |
 | `.../service/ProxyTileService.kt` | Quick Settings tile: старт/стоп по состоянию. |
 | `.../service/BootReceiver.kt` | Автозапуск после загрузки, если включён `autoStart`. |
-| `lib/core/proxy/proxy_repository.dart` | Dart-клиент `/proxy` и `/proxy_events`; модели состояния, bootstrap, start/stop/settings. |
+| `lib/core/proxy/domain/proxy_backend.dart` | Контракт бэкенда прокси: события, bootstrap, start/stop/settings, секрет, диагностика. |
+| `lib/core/proxy/data/channel_proxy_backend.dart` | MethodChannel/EventChannel для Android и iOS. |
+| `lib/core/proxy/data/mac_proxy_engine.dart` | In-process Dart-ядро для macOS. |
+| `lib/core/proxy/proxy_repository.dart` | Фасад состояния для UI: выбирает бэкенд, хранит state/settings/logs, menu bar. |
 | `android/app/src/main/res/...` | Иконки, стили, строки уведомлений; канал уведомлений создаётся в `ProxyService`. |
 | `scripts/check_16kb.sh` | Проверка выравнивания native-библиотек Flutter под 16 KB pages. |
 

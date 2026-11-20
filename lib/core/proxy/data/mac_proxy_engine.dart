@@ -9,21 +9,38 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:talker/talker.dart';
 import 'package:tg_proxy_core/tg_proxy_core.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../domain/proxy_backend.dart';
+import '../domain/proxy_models.dart';
 
 /// macOS counterpart of the Kotlin service: settings live in a JSON file next
 /// to `app.db`, and the relay runs on the main isolate.
-class MacProxyEngine {
-  MacProxyEngine({this.directory});
+class MacProxyEngine implements ProxyBackend {
+  MacProxyEngine({this.directory}) {
+    _logSub = proxyTalker.stream.listen((data) {
+      _add({
+        'type': 'log',
+        'line': data.displayMessage,
+        'level': data.logLevel?.name,
+      });
+    });
+  }
 
   final String? directory;
+
+  final StreamController<Map<String, dynamic>> _events =
+      StreamController<Map<String, dynamic>>.broadcast();
+  StreamSubscription<TalkerData>? _logSub;
+
+  @override
+  Stream<Map<String, dynamic>> get events => _events.stream;
 
   ProxyEngine? _engine;
   Timer? _statsTimer;
   File? _file;
   bool _starting = false;
   String? _error;
-
-  void Function(Map<String, dynamic> state)? onState;
 
   static const _legacySecret = 'e6472c7872a569823465f0186d4e62b0';
 
@@ -52,8 +69,6 @@ class MacProxyEngine {
   };
 
   String _secret = '';
-
-  Stream<TalkerData> get logs => proxyTalker.stream;
 
   String get secret => _secret;
   bool get isRunning => _engine?.isRunning == true;
@@ -100,6 +115,7 @@ class MacProxyEngine {
     }
   }
 
+  @override
   Future<void> start() async {
     if (isRunning) return;
     _starting = true;
@@ -120,6 +136,7 @@ class MacProxyEngine {
     }
   }
 
+  @override
   Future<void> stop() async {
     _statsTimer?.cancel();
     _statsTimer = null;
@@ -129,11 +146,13 @@ class MacProxyEngine {
     _emit();
   }
 
+  @override
   Future<void> restart() async {
     await stop();
     await start();
   }
 
+  @override
   Future<void> updateSettings(Map<String, dynamic> values) async {
     for (final entry in values.entries) {
       if (!_settings.containsKey(entry.key)) continue;
@@ -171,6 +190,7 @@ class MacProxyEngine {
     _emit();
   }
 
+  @override
   Future<String> regenerateSecret() async {
     _secret = _generateSecret();
     await _save();
@@ -179,14 +199,14 @@ class MacProxyEngine {
     return _secret;
   }
 
-  Future<Map<String, dynamic>> bootstrap() async => {
-    'engineVersion': 'dart-macos',
-    'settings': _publicSettings(),
-    'state': _state(),
-    'link': link(),
-    'secret': _secret,
-    'secretMigrated': false,
-  };
+  @override
+  Future<ProxyBootstrap> bootstrap() async => ProxyBootstrap(
+    state: ProxySnapshot.fromMap(_state()),
+    settings: _publicSettings(),
+    link: link(),
+    secret: _secret,
+    engineVersion: 'dart-macos',
+  );
 
   Map<String, dynamic> _publicSettings() => {
     for (final entry in _settings.entries)
@@ -214,7 +234,11 @@ class MacProxyEngine {
     };
   }
 
-  void _emit() => onState?.call(_state());
+  void _emit() => _add({'type': 'state', ..._state()});
+
+  void _add(Map<String, dynamic> event) {
+    if (!_events.isClosed) _events.add(event);
+  }
 
   String link() {
     final host = _settings['host'];
@@ -226,8 +250,26 @@ class MacProxyEngine {
     return 'tg://proxy?server=$host&port=$port&secret=$prefix';
   }
 
-  String exportSettings() => jsonEncode(_publicSettings());
+  @override
+  Future<String> exportSettings() async => jsonEncode(_publicSettings());
 
+  @override
+  Future<String> getSecret() async => _secret;
+
+  @override
+  Future<String> getProxyLink() async => link();
+
+  @override
+  Future<void> openInTelegram() async {
+    await launchUrl(Uri.parse(link()), mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  Future<void> openBatterySettings() async {}
+
+  @override
+  Future<void> acknowledgeSecretMigration() async {}
+  @override
   Future<bool> importSettings(String raw) async {
     try {
       final decoded = jsonDecode(raw);
@@ -241,7 +283,8 @@ class MacProxyEngine {
     }
   }
 
-  Future<Map<String, dynamic>> diagnostics() async {
+  @override
+  Future<Map<String, dynamic>> getDiagnostics() async {
     final info = await PackageInfo.fromPlatform();
     return {
       'version': info.version,
@@ -276,8 +319,12 @@ class MacProxyEngine {
     );
   }
 
+  @override
   Future<void> dispose() async {
+    _logSub?.cancel();
+    _logSub = null;
     await stop();
+    await _events.close();
   }
 
   static String _generateSecret() {
