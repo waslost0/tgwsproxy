@@ -20,10 +20,6 @@ class ProxyRepository extends ChangeNotifier {
     _backend = backend;
   }
 
-  static const _menuChannel = MethodChannel(
-    'com.whitetigersoft.tgwsproxy/menu',
-  );
-
   ProxyBackend? _backend;
   StreamSubscription<Map<String, dynamic>>? _subscription;
   bool _initialized = false;
@@ -44,7 +40,8 @@ class ProxyRepository extends ChangeNotifier {
 
     var backend = _backend;
     if (backend == null) {
-      if (_isMacDesktop) {
+      if (Platform.isMacOS &&
+          !Platform.environment.containsKey('FLUTTER_TEST')) {
         final mac = MacProxyEngine();
         await mac.load();
         backend = mac;
@@ -57,18 +54,12 @@ class ProxyRepository extends ChangeNotifier {
     _subscription = backend.events.listen(
       _onEvent,
       onError: (Object err) {
-        error = err.toString();
+        error = _message(err);
         notifyListeners();
       },
     );
-    if (backend is MacProxyEngine) {
-      _menuChannel.setMethodCallHandler(_handleMenuCall);
-    }
     await refresh();
   }
-
-  bool get _isMacDesktop =>
-      Platform.isMacOS && !Platform.environment.containsKey('FLUTTER_TEST');
 
   Future<void> refresh() async {
     try {
@@ -94,7 +85,7 @@ class ProxyRepository extends ChangeNotifier {
       settings = <String, dynamic>{...settings, ...next};
       await refresh();
     } catch (err) {
-      error = err.toString();
+      error = _message(err);
       notifyListeners();
     }
   }
@@ -109,7 +100,7 @@ class ProxyRepository extends ChangeNotifier {
     try {
       await _requireBackend().acknowledgeSecretMigration();
     } catch (err) {
-      error = err.toString();
+      error = _message(err);
       notifyListeners();
       return;
     }
@@ -121,7 +112,7 @@ class ProxyRepository extends ChangeNotifier {
     try {
       await _requireBackend().openInTelegram();
     } catch (err) {
-      error = err.toString();
+      error = _message(err);
       notifyListeners();
     }
   }
@@ -131,7 +122,7 @@ class ProxyRepository extends ChangeNotifier {
       secret = await _requireBackend().getSecret();
       notifyListeners();
     } catch (err) {
-      error = err.toString();
+      error = _message(err);
       notifyListeners();
     }
     return secret;
@@ -141,7 +132,7 @@ class ProxyRepository extends ChangeNotifier {
     try {
       return await _requireBackend().getProxyLink();
     } catch (err) {
-      error = err.toString();
+      error = _message(err);
       notifyListeners();
       return link;
     }
@@ -151,7 +142,7 @@ class ProxyRepository extends ChangeNotifier {
     try {
       return await _requireBackend().exportSettings();
     } catch (err) {
-      error = err.toString();
+      error = _message(err);
       notifyListeners();
       return '';
     }
@@ -163,7 +154,7 @@ class ProxyRepository extends ChangeNotifier {
       await refresh();
       return ok;
     } catch (err) {
-      error = err.toString();
+      error = _message(err);
       notifyListeners();
       return false;
     }
@@ -173,7 +164,7 @@ class ProxyRepository extends ChangeNotifier {
     try {
       return await _requireBackend().getDiagnostics();
     } catch (err) {
-      error = err.toString();
+      error = _message(err);
       notifyListeners();
       return <String, dynamic>{};
     }
@@ -183,7 +174,7 @@ class ProxyRepository extends ChangeNotifier {
     try {
       await _requireBackend().openBatterySettings();
     } catch (err) {
-      error = err.toString();
+      error = _message(err);
       notifyListeners();
     }
   }
@@ -216,7 +207,7 @@ class ProxyRepository extends ChangeNotifier {
       state = const ProxySnapshot();
       notifyListeners();
     } catch (err) {
-      error = err.toString();
+      error = _message(err);
       state = ProxySnapshot(
         host: state.host,
         port: state.port,
@@ -233,9 +224,11 @@ class ProxyRepository extends ChangeNotifier {
       final raw = event['state'] is Map ? event['state'] : event;
       state = ProxySnapshot.fromMap(raw as Map);
       notifyListeners();
-      unawaited(_notifyMenu());
+      unawaited(_pushMenuState());
     } else if (type == 'log') {
       _onLog(event);
+    } else if (type == 'menu') {
+      unawaited(_menuAction(event['action'] as String?));
     } else if (type == 'error') {
       error = event['message'] as String?;
       notifyListeners();
@@ -263,11 +256,11 @@ class ProxyRepository extends ChangeNotifier {
     engineVersion = bootstrap.engineVersion;
     secretMigrated = bootstrap.secretMigrated;
     notifyListeners();
-    unawaited(_notifyMenu());
+    unawaited(_pushMenuState());
   }
 
-  Future<dynamic> _handleMenuCall(MethodCall call) async {
-    switch (call.method) {
+  Future<void> _menuAction(String? action) async {
+    switch (action) {
       case 'toggle':
         if (state.running) {
           await stop();
@@ -276,34 +269,28 @@ class ProxyRepository extends ChangeNotifier {
         }
       case 'openTelegram':
         await openInTelegram();
-      case 'sync':
-        await _notifyMenu();
     }
-    return null;
   }
 
-  Future<void> _notifyMenu() async {
+  Future<void> _pushMenuState() async {
     final backend = _backend;
-    if (backend is! MacProxyEngine) return;
+    if (backend == null) return;
     final proxyLink = link.isNotEmpty ? link : await backend.getProxyLink();
-    try {
-      await _menuChannel.invokeMethod<void>('state', <String, dynamic>{
-        'running': state.running,
-        'starting': state.starting,
-        'port': state.port,
-        'link': proxyLink,
-      });
-    } on MissingPluginException {
-      // Tests and non-macOS hosts have no menu channel.
-    }
+    await backend.pushMenuState(<String, dynamic>{
+      'running': state.running,
+      'starting': state.starting,
+      'port': state.port,
+      'link': proxyLink,
+    });
   }
+
+  String _message(Object error) => error is PlatformException
+      ? error.message ?? error.code
+      : error.toString();
 
   @override
   void dispose() {
     _subscription?.cancel();
-    if (_backend is MacProxyEngine) {
-      _menuChannel.setMethodCallHandler(null);
-    }
     final backend = _backend;
     if (backend != null) unawaited(backend.dispose());
     super.dispose();

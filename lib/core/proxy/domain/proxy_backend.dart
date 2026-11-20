@@ -36,4 +36,8 @@ abstract class ProxyBackend {
   Future<Map<String, dynamic>> getDiagnostics();
 
   Future<void> dispose();
+
+  /// macOS-only hook: pushes the current state to the menu bar item.
+  /// No-op on other platforms.
+  Future<void> pushMenuState(Map<String, dynamic> state) async {}
 }

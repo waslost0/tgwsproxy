@@ -17,6 +17,9 @@ class _FakeBackend implements ProxyBackend {
   @override
   Stream<Map<String, dynamic>> get events => _events.stream;
 
+  @override
+  Future<void> pushMenuState(Map<String, dynamic> state) async {}
+
   Map<String, dynamic> _state() => <String, dynamic>{
     'running': running,
     'starting': false,
@@ -62,8 +65,12 @@ class _FakeBackend implements ProxyBackend {
   @override
   Future<String> regenerateSecret() async => '11' * 16;
 
+  bool acked = false;
+
   @override
-  Future<void> acknowledgeSecretMigration() async {}
+  Future<void> acknowledgeSecretMigration() async {
+    acked = true;
+  }
 
   @override
   Future<void> openInTelegram() async {}
@@ -91,6 +98,29 @@ class _FakeBackend implements ProxyBackend {
 }
 
 void main() {
+  test('facade applies migration ack', () async {
+    final backend = _FakeBackend();
+    final repository = ProxyRepository(backend: backend);
+    await repository.init();
+    await repository.acknowledgeSecretMigration();
+    expect(backend.acked, isTrue);
+    expect(repository.secretMigrated, isFalse);
+    repository.dispose();
+  });
+
+  test('facade reacts to menu toggle event', () async {
+    final backend = _FakeBackend();
+    final repository = ProxyRepository(backend: backend);
+    await repository.init();
+    backend.running = true;
+    backend.emitState();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    backend._events.add(<String, dynamic>{'type': 'menu', 'action': 'toggle'});
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(repository.state.running, isFalse);
+    repository.dispose();
+  });
+
   test('facade applies backend state and settings', () async {
     final backend = _FakeBackend();
     final repository = ProxyRepository(backend: backend);

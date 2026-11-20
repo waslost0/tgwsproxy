@@ -147,7 +147,7 @@
 | `lib/core/proxy/domain/proxy_backend.dart` | Контракт бэкенда прокси: события, bootstrap, start/stop/settings, секрет, диагностика. |
 | `lib/core/proxy/data/channel_proxy_backend.dart` | MethodChannel/EventChannel для Android и iOS. |
 | `lib/core/proxy/data/mac_proxy_engine.dart` | In-process Dart-ядро для macOS. |
-| `lib/core/proxy/proxy_repository.dart` | Фасад состояния для UI: выбирает бэкенд, хранит state/settings/logs, menu bar. |
+| `lib/core/proxy/proxy_repository.dart` | Фасад состояния для UI: выбирает бэкенд, хранит state/settings/logs, реагирует на события `{type: menu}`. |
 | `android/app/src/main/res/...` | Иконки, стили, строки уведомлений; канал уведомлений создаётся в `ProxyService`. |
 | `scripts/check_16kb.sh` | Проверка выравнивания native-библиотек Flutter под 16 KB pages. |
 

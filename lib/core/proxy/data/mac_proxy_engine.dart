@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -17,6 +18,12 @@ import '../domain/proxy_models.dart';
 /// macOS counterpart of the Kotlin service: settings live in a JSON file next
 /// to `app.db`, and the relay runs on the main isolate.
 class MacProxyEngine implements ProxyBackend {
+  static const _menuChannel = MethodChannel(
+    'com.whitetigersoft.tgwsproxy/menu',
+  );
+
+  bool _menuHandlerSet = false;
+
   MacProxyEngine({this.directory}) {
     _logSub = proxyTalker.stream.listen((data) {
       _add({
@@ -268,6 +275,34 @@ class MacProxyEngine implements ProxyBackend {
   Future<void> openBatterySettings() async {}
 
   @override
+  Future<void> pushMenuState(Map<String, dynamic> state) async {
+    _ensureMenuHandler();
+    try {
+      await _menuChannel.invokeMethod<void>('state', state);
+    } on MissingPluginException {
+      // Tests and non-macOS hosts have no menu channel.
+    }
+  }
+
+  void _ensureMenuHandler() {
+    if (_menuHandlerSet) return;
+    _menuHandlerSet = true;
+    _menuChannel.setMethodCallHandler(_handleMenuCall);
+  }
+
+  Future<dynamic> _handleMenuCall(MethodCall call) async {
+    switch (call.method) {
+      case 'toggle':
+        _add(const <String, dynamic>{'type': 'menu', 'action': 'toggle'});
+      case 'openTelegram':
+        _add(const <String, dynamic>{'type': 'menu', 'action': 'openTelegram'});
+      case 'sync':
+        _emit();
+    }
+    return null;
+  }
+
+  @override
   Future<void> acknowledgeSecretMigration() async {}
   @override
   Future<bool> importSettings(String raw) async {
@@ -321,6 +356,7 @@ class MacProxyEngine implements ProxyBackend {
 
   @override
   Future<void> dispose() async {
+    if (_menuHandlerSet) _menuChannel.setMethodCallHandler(null);
     _logSub?.cancel();
     _logSub = null;
     await stop();

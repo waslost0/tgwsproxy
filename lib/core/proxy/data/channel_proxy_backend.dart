@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 
 import '../domain/proxy_backend.dart';
@@ -21,8 +23,28 @@ class ChannelProxyBackend implements ProxyBackend {
     final raw = await _methods.invokeMethod<Map<dynamic, dynamic>>(
       'getBootstrap',
     );
-    if (raw == null) throw MissingPluginException('no bootstrap');
+    if (raw == null) {
+      // Widget tests and hosts without the native side still need a backend.
+      const platform =
+          bool.fromEnvironment('flutter.inspector.structuredErrors')
+          ? 'flutter_test'
+          : null;
+      return ProxyBootstrap(
+        state: const ProxySnapshot(),
+        settings: <String, dynamic>{'platform': platform ?? _platformName()},
+        link: '',
+        secret: '',
+        engineVersion: '0.1.0',
+      );
+    }
     return ProxyBootstrap.fromMap(raw);
+  }
+
+  static String _platformName() {
+    if (Platform.isIOS) return 'ios';
+    if (Platform.isMacOS) return 'macos';
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return 'test';
+    return 'android';
   }
 
   @override
@@ -79,6 +101,9 @@ class ChannelProxyBackend implements ProxyBackend {
   Future<void> _invoke(String method, [Object? arguments]) async {
     await _methods.invokeMethod<void>(method, arguments);
   }
+
+  @override
+  Future<void> pushMenuState(Map<String, dynamic> state) async {}
 
   @override
   Future<void> dispose() async {}
