@@ -9,14 +9,23 @@
 
 ## Скриншоты
 
-<p align="center">
-  <img src="docs/screenshots/android-connection.png" width="250" alt="Android: туннель">
-  <img src="docs/screenshots/macos-connection.png" width="390" alt="macOS: туннель">
-</p>
-<p align="center">
-  <img src="docs/screenshots/android-settings.png" width="250" alt="Android: настройки">
-  <img src="docs/screenshots/macos-settings.png" width="390" alt="macOS: настройки Cloudflare">
-</p>
+<table align="center">
+  <tr>
+    <th></th>
+    <th>Туннель</th>
+    <th>Настройки</th>
+  </tr>
+  <tr>
+    <th>Android</th>
+    <td valign="top"><img src="docs/screenshots/android-connection.png" width="250" alt="Android: туннель"></td>
+    <td valign="top"><img src="docs/screenshots/android-settings.png" width="250" alt="Android: настройки"></td>
+  </tr>
+  <tr>
+    <th>macOS</th>
+    <td valign="top"><img src="docs/screenshots/macos-connection.png" width="390" alt="macOS: туннель"></td>
+    <td valign="top"><img src="docs/screenshots/macos-settings.png" width="390" alt="macOS: настройки Cloudflare"></td>
+  </tr>
+</table>
 
 ## Статус
 
