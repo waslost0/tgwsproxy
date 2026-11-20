@@ -43,5 +43,9 @@ jobs:
           mkdir -p "$dir"
           cp .github/gradle/init-repositories.gradle.kts "$dir/"
 
+      - name: Android unit tests
+        working-directory: android
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+
       - name: Build debug APK
         run: flutter build apk --debug
