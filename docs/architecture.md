@@ -561,8 +561,8 @@ auto_port_picked, no_secure_auto
 - **MsgSplitter:** abridged (`0x7F/0xFF`, 3-байтная длина ×4) и intermediate (4-байтная LE `& 0x7FFFFFFF`), padded intermediate; при ошибке splitter отключается, поток идёт как есть.
 - **FakeTLS:** ClientHello/HMAC-SHA256, replay cache, ServerHello, CCS, appdata, профиль длины appdata, 301 на masking-домен для не-TLS; таймауты 10 с.
 - **WS:** собственный HTTP Upgrade поверх `SecureSocket`/`Socket`, `Sec-WebSocket-Protocol: binary`, маскирование клиентских кадров, ping/pong, фрагментация, лимит 16 МБ, keepalive-таймер 25 с (ping после 20 с бездействия), лимит заголовков ответа 64 КиБ. `dart:io WebSocket` не используем (нет контроля SNI/буферов/backpressure).
-- **Пулы:** WS на DC (reuse 120 с, прогрев, refill), CF worker pool (100 с), CF-домены: `kws{dc}.{domain}` и `kws{dc}-1.web.telegram.org`, `/apiws`; worker — `/apiws?dst=<ip>&dc=<dc>`; `secure = !no_secure`.
-- **Fallback:** worker → CF proxy/H2 → прямой TCP 443 с экспоненциальным backoff 30..3600 с; 429 cooldown 45..300 с.
+- **Пулы:** WS на DC (reuse 120 с, прогрев, refill), CF worker pool (100 с, пополнение в фоне — запрос никогда не ждёт подключения), CF-домены: `kws{dc}.{domain}` и `kws{dc}-1.web.telegram.org`, `/apiws`; worker — `/apiws?dst=<ip>&dc=<dc>`.
+- **Fallback:** свои Workers → свой/общий CF proxy → прямой TCP 443. CF-маршруты проверяются параллельно со стаггером 1 с и таймаутом попытки 8 с; сначала TLS 443, затем порт 80, с кулдауном 30..300 с и фоновой TLS-пробой раз в 60 с. 429 cooldown 45 с.
 - **H2-медиа:** `cf_h2`/`h2_transport` — HTTP/2 POST-стриминг через CF, replay/backpressure/каналы. Первый релиз — без H2; флаг `h2_enabled` выключен, медиа идёт через WS/CF. Порт — отдельный этап с отдельными тестами.
 - **Статистика:** active, total, lastHour, badRecent, ws, cf, h2, tcpFb, routed, bytesUp/Down, pool/cfPool hits/misses, errors.
 
