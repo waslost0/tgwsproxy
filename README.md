@@ -128,12 +128,12 @@ open "build/macos/Build/Products/Release/TG WS Proxy.app"
 ```
 
 - Прокси слушает `127.0.0.1:1443`; ссылка и настройки — как на Android.
-- По умолчанию включён plain WebSocket (порт 80), как в desktop-версии Flowseal: TLS к встроенным CF-доменам на многих провайдерах блокируется. Если у тебя TLS работает, выключи «Без TLS (порт 80)» в настройках.
+- Cloudflare сначала пробуется по TLS (443). Если провайдер блокирует рукопожатие, прокси сам переключается на порт 80 и периодически проверяет TLS снова. «Без TLS (порт 80)» принудительно оставляет только порт 80.
 - Если Telegram показывает `connecting...`, удали старую запись `127.0.0.1:1443` и добавь заново через «Открыть в Telegram» — секрет у нового macOS-билда свой.
 - Настройки и секрет лежат в `~/Library/Containers/com.whitetigersoft.tgwsproxy/Data/Library/Application Support/com.whitetigersoft.tgwsproxy/proxy_settings.json`. Секрет не хранится в Keychain.
 - Закрытие окна не завершает приложение; клик по иконке в Dock открывает его снова.
 - В menu bar есть иконка со статусом и меню: «Подключить/Отключить», «Открыть Telegram», «Скопировать ссылку», «Открыть приложение», «Выход».
-- Автозапуск при входе и Bot API без Cloudflare Worker не поддерживаются.
+- Автозапуск при входе не поддерживается. Bot API работает через свой Cloudflare Worker.
 - Для распространения вне своего Mac нужна подпись Developer ID и нотаризация — в релизы macOS-сборка не входит.
 
 ## Маршрут Cloudflare
@@ -141,13 +141,16 @@ open "build/macos/Build/Products/Release/TG WS Proxy.app"
 Встроенные домены `cfproxy` из upstream больше не отвечают (`404` после
 WebSocket-upgrade). Для работы на сетях с DPI нужен собственный Cloudflare:
 
-1. Разверните Worker по [CfWorker.md](https://github.com/Flowseal/tg-ws-proxy/blob/main/CfWorker.md).
-2. В настройках приложения укажите `Свой Worker Cloudflare`
-   (`worker.example.workers.dev`).
-3. Если Worker недоступен, укажите свой домен из `CfProxy.md`.
+1. Разверните Worker по [CfWorker.md](https://github.com/Flowseal/tg-ws-proxy/blob/main/CfWorker.md)
+   и добавьте один или несколько адресов `*.workers.dev` в настройках приложения.
+2. Либо укажите свой домен из [CfProxy.md](https://github.com/Flowseal/tg-ws-proxy/blob/main/CfProxy.md):
+   A-записи `kws1`…`kws5` и `kws203` на IP дата-центров Telegram, прокси включён.
+3. Свои Workers используются первыми, затем свой домен, затем общий список CF.
 
-Включайте `Без TLS (порт 80)`, только если TLS до Cloudflare блокируется
-провайдером. Трафик Telegram остаётся зашифрованным end-to-end.
+TLS и порт 80 переключаются автоматически: сначала пробуется 443, при блокировке
+рукопожатия — 80, с фоновой проверкой TLS. Включайте «Без TLS (порт 80)», только
+если нужно принудительно оставить HTTP. Трафик Telegram остаётся зашифрованным
+end-to-end.
 
 ## Структура
 

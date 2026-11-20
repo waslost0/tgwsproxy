@@ -3,6 +3,7 @@ import 'dart:async';
 
 import '../config/proxy_config.dart';
 import '../stats/proxy_stats.dart';
+import 'cf_route_connector.dart';
 import 'proxy_transport.dart';
 import 'raw_websocket.dart';
 import 'ws_pool.dart';
@@ -21,9 +22,17 @@ class CfWorkerPool {
     required this.config,
     required this.stats,
     WsConnector? connector,
+    CfRouteConnector? cfRoutes,
     DateTime Function()? now,
-  })  : _connector = connector ?? defaultWsConnector,
-        _now = now ?? DateTime.now;
+  })  : _cfRoutes = cfRoutes ??
+            CfRouteConnector(
+              config: config,
+              stats: stats,
+              connector: connector,
+            ),
+        _now = now ?? DateTime.now {
+    _cfRoutes.onFailure = (route, error) => reportFailure(route.key, error);
+  }
 
   static const reuseMaxAge = Duration(seconds: 100);
   static const perDcLimit = 1;
@@ -33,7 +42,7 @@ class CfWorkerPool {
 
   final ProxyConfig config;
   final ProxyStats stats;
-  final WsConnector _connector;
+  final CfRouteConnector _cfRoutes;
   final DateTime Function() _now;
   final Map<int, List<_PooledWorker>> _idle = {};
   final Set<int> _refilling = {};
@@ -66,13 +75,11 @@ class CfWorkerPool {
       return pooled.transport;
     }
 
+    // Never connect on the request path: a dead worker would stall every new
+    // session for the full TLS timeout. The router falls through to the CF
+    // domain or TCP while this refills in the background.
     stats.cfPoolMisses++;
-    final connected = await _connectOne(dc, fallbackDst, workerDomains);
-    if (connected != null) {
-      _scheduleRefill(dc, fallbackDst, workerDomains);
-      return connected.transport;
-    }
-    _noteFailure(dc);
+    _scheduleRefill(dc, fallbackDst, workerDomains);
     return null;
   }
 
@@ -160,21 +167,19 @@ class CfWorkerPool {
       path: '/apiws',
       queryParameters: {'dst': fallbackDst, 'dc': '$dc'},
     ).toString();
-    for (final domain in availableDomains(workerDomains)) {
-      try {
-        final transport = await _connector(
+    final routes = [
+      for (final domain in availableDomains(workerDomains))
+        CfRoute(
+          key: domain,
           host: domain,
-          domain: domain,
-          secure: !config.disableSecure,
           path: path,
-          timeout: const Duration(seconds: 8),
-        );
-        return _PooledWorker(transport, _now(), domain);
-      } catch (error) {
-        reportFailure(domain, error);
-      }
-    }
-    return null;
+          kind: CfRouteKind.worker,
+        ),
+    ];
+    if (routes.isEmpty) return null;
+    final result = await _cfRoutes.connect(routes);
+    if (result == null) return null;
+    return _PooledWorker(result.transport, _now(), result.route.key);
   }
 
   bool _isStale(_PooledWorker pooled) =>

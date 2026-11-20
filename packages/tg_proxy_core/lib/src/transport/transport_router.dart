@@ -6,9 +6,9 @@ import '../constants.dart';
 import '../stats/proxy_stats.dart';
 import 'cf_domains.dart';
 import '../logging/proxy_log.dart';
+import 'cf_route_connector.dart';
 import 'cf_worker_pool.dart';
 import 'proxy_transport.dart';
-import 'raw_websocket.dart';
 import 'tcp_fallback.dart';
 import 'ws_pool.dart';
 
@@ -39,12 +39,19 @@ class TransportRouter {
     required this.balancer,
     WsPool? wsPool,
     CfWorkerPool? cfWorkerPool,
+    CfRouteConnector? cfRoutes,
     TcpFallback? tcpFallback,
     WsConnector? connector,
   })  : wsPool = wsPool ??
             WsPool(config: config, stats: stats, connector: connector),
         cfWorkerPool = cfWorkerPool ??
             CfWorkerPool(config: config, stats: stats, connector: connector),
+        cfRoutes = cfRoutes ??
+            CfRouteConnector(
+              config: config,
+              stats: stats,
+              connector: connector,
+            ),
         tcpFallback = tcpFallback ?? TcpFallback();
 
   final ProxyConfig config;
@@ -52,6 +59,7 @@ class TransportRouter {
   final CfDomainBalancer balancer;
   final WsPool wsPool;
   final CfWorkerPool cfWorkerPool;
+  final CfRouteConnector cfRoutes;
   final TcpFallback tcpFallback;
 
   Future<ConnectedTransport?> connect(
@@ -127,36 +135,38 @@ class TransportRouter {
   Future<({ProxyTransport transport, String domain})?> _connectCfProxy(
     int dc,
   ) async {
-    for (final base in balancer.getDomainsForDc(dc)) {
-      final domain = 'kws$dc.$base';
-      try {
-        final transport = await RawWebSocket.connect(
-          domain,
-          domain,
-          secure: !config.disableSecure,
-          timeout: const Duration(seconds: 10),
-        );
-        balancer.updateDomainForDc(dc, base);
-        proxyInfo(
-          'CF proxy connected $domain secure=${!config.disableSecure}',
-        );
-        return (transport: transport, domain: base);
-      } catch (error) {
-        stats.bad++;
-        proxyWarning('CF proxy $domain failed: $error');
-      }
+    final routes = [
+      for (final base in balancer.getDomainsForDc(dc))
+        CfRoute(
+          key: base,
+          host: 'kws$dc.$base',
+          path: wsPath,
+          kind: CfRouteKind.proxy,
+        ),
+    ];
+    if (routes.isEmpty) {
+      proxyError('CF proxy: no domains for DC$dc');
+      return null;
     }
-    proxyError('CF proxy: all domains failed for DC$dc');
-    return null;
+    final result = await cfRoutes.connect(routes);
+    if (result == null) {
+      proxyError('CF proxy: all domains failed for DC$dc');
+      return null;
+    }
+    balancer.updateDomainForDc(dc, result.route.key);
+    proxyInfo(
+      'CF proxy connected ${result.route.host} '
+      'secure=${result.secure}',
+    );
+    return (transport: result.transport, domain: result.route.key);
   }
 
   Future<void> warmup() async {
     await wsPool.warmup();
     final fallbackDcs = <int, String>{};
-    for (final entry in dcDefaultIps.entries) {
-      if (!config.dcRedirects.containsKey(entry.key)) {
-        fallbackDcs[entry.key] = entry.value;
-      }
+    for (final dc in dcDefaultIps.keys) {
+      final ip = config.fallbackIp(dc, test: false);
+      if (ip != null) fallbackDcs[dc] = ip;
     }
     await cfWorkerPool.warmup(fallbackDcs);
   }

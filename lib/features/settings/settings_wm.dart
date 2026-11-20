@@ -70,15 +70,15 @@ class SettingsWM extends BaseModel {
   }
 
   Future<void> useSharedRoute() async {
-    // AndMTProto on the same network reaches CF over plain port 80; TLS to
-    // Cloudflare is DPI-blocked here. A stale user domain must also be
-    // removed, otherwise the shared domain list is never used.
-    noSecure = true;
+    // A stale user domain must be removed, otherwise the shared domain list is
+    // never used. Keep TLS enabled: the route connector falls back to plain
+    // port 80 automatically when the ISP blocks it.
+    noSecure = false;
     cfWorkerEnabled = false;
     cfDomain = '';
     notifyModelListeners();
     await proxy.updateSettings({
-      'noSecure': true,
+      'noSecure': false,
       'cfWorkerEnabled': false,
       'cfUserDomains': <String>[],
     });

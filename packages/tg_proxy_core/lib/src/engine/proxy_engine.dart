@@ -6,7 +6,7 @@ import '../botapi/bot_api_proxy.dart';
 import '../config/proxy_config.dart';
 import '../stats/proxy_stats.dart';
 import '../transport/cf_domains.dart';
-import '../transport/raw_websocket.dart';
+import '../transport/cf_route_connector.dart';
 import '../transport/transport_router.dart';
 import '../proxy/proxy_server.dart';
 
@@ -33,29 +33,30 @@ class EnginePaths {
 ///
 /// The worker accepts `/apiws?dst=<host>` and relays raw TLS bytes; Bot API
 /// does not use MTProto re-encryption, so this is a plain byte pipe.
-BotApiConnector botApiCfConnector(ProxyConfig config) {
+BotApiConnector botApiCfConnector(ProxyConfig config, ProxyStats stats) {
+  final routes = CfRouteConnector(config: config, stats: stats);
   return (host, port) async {
     final workerDomains = config.cfproxyWorkerDomains;
     if (workerDomains.isEmpty) {
       throw StateError('No CF worker domain configured for Bot API');
     }
-    Object? lastError;
-    for (final domain in workerDomains) {
-      try {
-        return await RawWebSocket.connect(
-          domain,
-          domain,
-          secure: !config.disableSecure,
-          path: Uri(
-            path: '/apiws',
-            queryParameters: {'dst': host},
-          ).toString(),
-        );
-      } catch (error) {
-        lastError = error;
-      }
+    final path = Uri(
+      path: '/apiws',
+      queryParameters: {'dst': host},
+    ).toString();
+    final result = await routes.connect([
+      for (final domain in workerDomains)
+        CfRoute(
+          key: domain,
+          host: domain,
+          path: path,
+          kind: CfRouteKind.worker,
+        ),
+    ]);
+    if (result == null) {
+      throw StateError('Bot API worker unavailable');
     }
-    throw StateError('Bot API worker unavailable: $lastError');
+    return result.transport;
   };
 }
 
@@ -121,7 +122,7 @@ class ProxyEngine {
     if (config.botApiEnabled) {
       try {
         final bot = BotApiProxy(
-          connector: botApiCfConnector(config),
+          connector: botApiCfConnector(config, stats),
           port: config.botApiPort,
         );
         _botApiPort = await bot.start();

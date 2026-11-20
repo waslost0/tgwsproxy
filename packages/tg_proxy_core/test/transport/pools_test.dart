@@ -102,15 +102,16 @@ void main() {
       addTearDown(pool.dispose);
 
       final first = await pool.acquire(2, '149.154.167.220', ['w.example']);
-      expect(first, isNotNull);
+      expect(first, isNull);
       expect(stats.cfPoolMisses, 1);
+      await _waitUntil(() => created >= 1);
       expect(lastPath, '/apiws?dst=149.154.167.220&dc=2');
-      await _waitUntil(() => created >= 2);
       expect(
         await pool.acquire(2, '149.154.167.220', ['w.example']),
         isNotNull,
       );
       expect(stats.cfPoolHits, 1);
+      await _waitUntil(() => created >= 2);
     });
 
     test('cooldowns a worker after HTTP 429', () {
@@ -192,6 +193,7 @@ void main() {
     test('falls back to CF worker before CF proxy and TCP', () async {
       final stats = ProxyStats();
       final balancer = CfDomainBalancer()..updateDomains([]);
+      var created = 0;
       final router = TransportRouter(
         config: const ProxyConfig(
           poolSize: 1,
@@ -208,12 +210,22 @@ void main() {
           sni,
           required timeout,
         }) async {
-          if (domain == 'w.example') return _FakeTransport();
+          if (domain == 'w.example') {
+            created++;
+            return _FakeTransport();
+          }
           throw StateError('direct failed');
         },
       );
       addTearDown(router.dispose);
 
+      await router.cfWorkerPool.acquire(
+        2,
+        '149.154.167.220',
+        const ['w.example'],
+      );
+      await _waitUntil(() => created >= 1);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
       final result = await router.connect(2, media: false);
       expect(result?.route, 'cf_worker');
       expect(stats.cf, 1);
@@ -249,6 +261,37 @@ void main() {
       final result = await router.connect(2, media: false);
       expect(result, isNull);
       expect(stats.cf, 0);
+    });
+
+    test('warms workers for redirected DCs too', () async {
+      final paths = <String>{};
+      final router = TransportRouter(
+        config: const ProxyConfig(
+          poolSize: 1,
+          cfWorkerEnabled: true,
+          cfproxyWorkerDomains: ['w.example'],
+        ),
+        stats: ProxyStats(),
+        balancer: CfDomainBalancer()..updateDomains([]),
+        connector: ({
+          required host,
+          required domain,
+          required secure,
+          required path,
+          sni,
+          required timeout,
+        }) async {
+          if (domain == 'w.example') paths.add(path);
+          return _FakeTransport();
+        },
+      );
+      addTearDown(router.dispose);
+
+      await router.warmup();
+      await _waitUntil(() => paths.length >= 6);
+
+      expect(paths.any((path) => path.contains('dst=149.154.167.51')), isTrue);
+      expect(paths.any((path) => path.contains('dst=149.154.167.91')), isTrue);
     });
 
     test('falls back to direct TCP when WS and CF fail', () async {

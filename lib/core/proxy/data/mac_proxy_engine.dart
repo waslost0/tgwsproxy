@@ -65,7 +65,7 @@ class MacProxyEngine implements ProxyBackend {
     'cfWorkerEnabled': false,
     'fakeTlsDomain': '',
     'forceTestDc': false,
-    'noSecure': true,
+    'noSecure': false,
     'proxyProtocol': false,
     'botApiEnabled': false,
     'botApiPort': 8081,
@@ -104,10 +104,10 @@ class MacProxyEngine implements ProxyBackend {
       } catch (_) {
         // A corrupt file is replaced with defaults below.
       }
-      // Desktop upstream works over plain HTTP; TLS to Cloudflare is blocked
-      // on many ISPs. Existing macOS settings keep the old insecure default.
+      // TLS is tried first; the route connector falls back to plain port 80
+      // when the ISP blocks the handshake. The switch can still force 80.
       if (version < 1) {
-        _settings['noSecure'] = true;
+        _settings['noSecure'] = false;
         _settings['settingsVersion'] = 1;
         await _save();
       }

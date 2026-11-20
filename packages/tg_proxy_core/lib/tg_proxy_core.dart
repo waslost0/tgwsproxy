@@ -18,6 +18,7 @@ export 'src/proxy/proxy_server.dart';
 export 'src/stats/proxy_stats.dart';
 export 'src/transport/cf_domains.dart';
 export 'src/transport/cf_probe.dart';
+export 'src/transport/cf_route_connector.dart';
 export 'src/transport/cf_worker_pool.dart';
 export 'src/transport/proxy_transport.dart';
 export 'src/transport/raw_websocket.dart';

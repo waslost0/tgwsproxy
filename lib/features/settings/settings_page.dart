@@ -107,8 +107,8 @@ class _SettingsPageState extends BasePageState<SettingsPage>
                 secondary: const Icon(Icons.lock_open_outlined),
                 title: const Text('Без TLS (порт 80)'),
                 subtitle: const Text(
-                  'Если провайдер блокирует Cloudflare по TLS. '
-                  'Соединение остаётся внутри MTProto.',
+                  'Принудительно порт 80. Обычно не нужно: прокси сам '
+                  'переключается на 80, если TLS блокируется.',
                 ),
               ),
               const Divider(height: 1),
@@ -197,9 +197,10 @@ class _SettingsPageState extends BasePageState<SettingsPage>
                 onChanged: model.setCfWorkerEnabled,
                 secondary: const Icon(Icons.alt_route),
                 title: const Text('Использовать свои Workers'),
-                subtitle: const Text(
-                  'Выключено — общий CF proxy, как в AndMTProto. '
-                  'Включайте, только если Worker быстрее.',
+                subtitle: Text(
+                  model.cfWorkerEnabled
+                      ? 'Сначала свои Workers, затем свой или общий CF proxy.'
+                      : 'Выключено — только CF proxy: свой домен или общий.',
                 ),
               ),
               const Divider(height: 1),
@@ -207,7 +208,8 @@ class _SettingsPageState extends BasePageState<SettingsPage>
                 leading: const Icon(Icons.swap_horiz),
                 title: const Text('Сбросить на shared CF'),
                 subtitle: const Text(
-                  'Общий Cloudflare по порту 80, без своих доменов и Workers — как в AndMTProto.',
+                  'Общий Cloudflare без своих доменов и Workers — как в AndMTProto. '
+                  'Порт 80 включается сам, если TLS блокируют.',
                 ),
                 trailing: const Icon(Icons.restart_alt),
                 onTap: model.useSharedRoute,
