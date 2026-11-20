@@ -7,6 +7,17 @@
 
 Приложение переосмысляет рабочий [AndMTProto](https://github.com/oruviyex18/AndMTProto). Архитектура и этапы — в [docs/architecture.md](docs/architecture.md).
 
+## Скриншоты
+
+<p align="center">
+  <img src="docs/screenshots/android-connection.png" width="250" alt="Android: туннель">
+  <img src="docs/screenshots/macos-connection.png" width="390" alt="macOS: туннель">
+</p>
+<p align="center">
+  <img src="docs/screenshots/android-settings.png" width="250" alt="Android: настройки">
+  <img src="docs/screenshots/macos-settings.png" width="390" alt="macOS: настройки Cloudflare">
+</p>
+
 ## Статус
 
 Android-версия собрана и проверена на реальном устройстве: прокси, foreground service, QS tile, автозапуск, настройки DC/секрета/Cloudflare, логи. Android APK публикуется в [Releases](https://github.com/waslost0/tgwsproxy/releases).
