@@ -91,12 +91,13 @@ class WindowsUpdater {
       }
 
       final script = File(p.join(temp.path, 'update.ps1'));
+      final ready = File(p.join(temp.path, 'ready.txt'));
       await script.writeAsString(
-        '\uFEFF${_script(pid: pid, zip: zip.path, installDir: installDir.path, exeName: p.basename(exe.path), log: p.join(temp.path, 'update.log'), resume: resume)}',
+        '\uFEFF${_script(pid: pid, zip: zip.path, installDir: installDir.path, exeName: p.basename(exe.path), log: p.join(temp.path, 'update.log'), ready: ready.path, resume: resume)}',
         flush: true,
       );
 
-      await Process.start(
+      final process = await Process.start(
         _powershell,
         [
           '-NoProfile',
@@ -110,12 +111,25 @@ class WindowsUpdater {
         workingDirectory: temp.path,
         mode: ProcessStartMode.detached,
       );
+
+      // Do not exit until the helper is actually running. A fast exit can
+      // kill it before PowerShell has even started.
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (!await ready.exists()) {
+        if (DateTime.now().isAfter(deadline)) {
+          process.kill();
+          throw const WindowsUpdateException(
+            'Помощник обновления не запустился. Попробуйте ещё раз.',
+          );
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
     } catch (_) {
       await temp.delete(recursive: true);
       rethrow;
     }
 
-    // Give the helper time to start waiting for this PID, then let it work.
+    // Let the helper enter its Wait-Process loop, then release the files.
     await Future<void>.delayed(const Duration(milliseconds: 500));
     exit(0);
   }
@@ -177,6 +191,7 @@ class WindowsUpdater {
     required String installDir,
     required String exeName,
     required String log,
+    required String ready,
     bool resume = false,
   }) => _script(
     pid: pid,
@@ -184,6 +199,7 @@ class WindowsUpdater {
     installDir: installDir,
     exeName: exeName,
     log: log,
+    ready: ready,
     resume: resume,
   );
 
@@ -193,6 +209,7 @@ class WindowsUpdater {
     required String installDir,
     required String exeName,
     required String log,
+    required String ready,
     required bool resume,
   }) {
     String q(String value) => "'${value.replaceAll("'", "''")}'";
@@ -200,6 +217,7 @@ class WindowsUpdater {
     return '''
 \$ErrorActionPreference = 'Stop'
 \$stage = \$null
+try { Set-Content -LiteralPath ${q(ready)} -Value 'ready' -Encoding ascii } catch {}
 function Write-Log(\$message) {
   try { "\$(Get-Date -Format o) \$message" | Out-File -FilePath ${q(log)} -Append -Encoding utf8 } catch {}
 }

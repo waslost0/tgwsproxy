@@ -9,11 +9,13 @@ void main() {
       installDir: r'C:\Users\Mark\AppData\Local\Programs\TG WS Proxy',
       exeName: 'tgwsproxy.exe',
       log: r'C:\Temp\update.log',
+      ready: r'C:\Temp\ready.txt',
       resume: true,
     );
 
     expect(script, contains('Wait-Process -Id 4242'));
     expect(script, isNot(contains(r'Wait-Process -Id $pid')));
+    expect(script, contains(r"Set-Content -LiteralPath 'C:\Temp\ready.txt'"));
     expect(script, contains("-ArgumentList '--resume'"));
     expect(
       script,
@@ -44,6 +46,7 @@ void main() {
       installDir: r'C:\App',
       exeName: 'tgwsproxy.exe',
       log: r'C:\Temp\update.log',
+      ready: r'C:\Temp\ready.txt',
     );
     expect(script, isNot(contains('--resume')));
   });
