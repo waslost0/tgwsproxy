@@ -78,6 +78,17 @@ flutter build apk --debug
 flutter build windows --release
 ```
 
+## Релиз
+
+Пуш тега запускает GitHub Actions. Он собирает Android APK, macOS `.zip` и Windows x64 `.zip` на родных раннерах и прикладывает все файлы к одному GitHub Release.
+
+```bash
+git tag -a v0.5.2 -m "TG WS Proxy 0.5.2"
+git push origin v0.5.2
+```
+
+Тег должен совпадать с версией в `pubspec.yaml`. Android подписывается release-ключом из секретов репозитория (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`); macOS и Windows артефакты не подписаны. Если нужно пересобрать существующий тег, запустите workflow **Release** вручную и укажите тег.
+
 ## iOS
 
 iOS-сборка не публикуется в Releases: приложение использует **Network Extension**, поэтому подписывать его нужно своей платной учётной записью Apple Developer. Бесплатный Apple ID не поддерживает capability `Network Extensions`.
@@ -164,7 +175,7 @@ open "build/macos/Build/Products/Release/TG WS Proxy.app"
 - Закрытие окна не завершает приложение; клик по иконке в Dock открывает его снова.
 - В menu bar есть иконка со статусом и меню: «Подключить/Отключить», «Открыть Telegram», «Скопировать ссылку», «Открыть приложение», «Выход».
 - Автозапуск при входе не поддерживается. Bot API работает через свой Cloudflare Worker.
-- Для распространения вне своего Mac нужна подпись Developer ID и нотаризация — в релизы macOS-сборка не входит.
+- Для распространения вне своего Mac нужна подпись Developer ID и нотаризация; в релизах лежит неподписанная сборка.
 
 ## Windows
 
@@ -182,7 +193,7 @@ flutter build windows --release
 - Настройки и секрет лежат в `%APPDATA%\TG WS Proxy\proxy_settings.json`. Секрет не хранится в Credential Manager.
 - Закрытие окна сворачивает приложение в трей и не останавливает прокси. Двойной клик по иконке возвращает окно, меню трея содержит «Подключить/Отключить», «Открыть Telegram», «Скопировать ссылку», «Открыть приложение» и «Выход». Повторный запуск `tgwsproxy.exe` открывает уже работающее окно вместо второго экземпляра.
 - Автозапуск при входе включается переключателем в настройках и пишет запись в `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` с аргументом `--autostart`.
-- Для распространения нужна подпись кода; в GitHub Releases Windows-сборка не входит.
+- Для распространения нужна подпись кода; в релизах лежит неподписанная сборка.
 
 ## Маршрут Cloudflare
 
