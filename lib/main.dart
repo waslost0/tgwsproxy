@@ -20,9 +20,9 @@ import 'proxy_main.dart' show runProxyEngine;
 @pragma('vm:entry-point')
 void proxyMain() => runProxyEngine();
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (!Platform.isMacOS) {
+  if (!Platform.isMacOS && !Platform.isWindows) {
     await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   }
 
@@ -31,6 +31,15 @@ Future<void> main() async {
   await app.init();
   final proxy = ProxyRepository();
   await proxy.init();
+
+  // Windows login autostart launches the executable with this flag.
+  if (Platform.isWindows && args.contains('--autostart')) {
+    final stored = await app.db.read('auto_start');
+    final enabled = stored != null
+        ? stored == 'true'
+        : proxy.settings['autoStart'] == true;
+    if (enabled) unawaited(proxy.start());
+  }
 
   runApp(
     MultiProvider(

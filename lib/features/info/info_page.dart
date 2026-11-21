@@ -30,11 +30,11 @@ class _InfoPageState extends BasePageState<InfoPage> {
         AppToast.showMessage('Установлена последняя версия ${current.version}');
         return;
       }
-      final download = Platform.isMacOS
-          ? release.pageUrl
-          : release.apkUrl != null &&
-                UpdateChecker.isOfficialDownload(release.apkUrl!)
-          ? release.apkUrl!
+      final download = Platform.isAndroid
+          ? release.apkUrl != null &&
+                    UpdateChecker.isOfficialDownload(release.apkUrl!)
+                ? release.apkUrl!
+                : release.pageUrl
           : release.pageUrl;
       final shouldOpen = await showDialog<bool>(
         context: context,
@@ -43,8 +43,7 @@ class _InfoPageState extends BasePageState<InfoPage> {
           content: Text(
             'Текущая версия: ${current.version}\n'
             'Новая версия: ${release.version}\n\n'
-            'APK откроется в браузере. После скачивания нажмите '
-            '«Обновить» — настройки сохранятся.',
+            '${Platform.isAndroid ? 'APK откроется в браузере. После скачивания нажмите «Обновить» — настройки сохранятся.' : 'Откроется страница релизов на GitHub. Скачайте сборку для своей платформы.'}',
           ),
           actions: [
             TextButton(

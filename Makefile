@@ -1,4 +1,4 @@
-.PHONY: gen run test analyze format apk check core-test
+.PHONY: gen run test analyze format apk windows check core-test
 
 gen:
 	flutter pub get
@@ -19,6 +19,9 @@ format:
 
 apk:
 	flutter build apk --debug
+
+windows:
+	flutter build windows --release
 
 core-test:
 	cd packages/tg_proxy_core && dart test

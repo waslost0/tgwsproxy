@@ -4,6 +4,7 @@
 
 - **Android** — Flutter UI + чисто Dart-ядро `tg_proxy_core`, foreground service.
 - **iOS** — тот же Flutter UI + Network Extension с Rust-ядром (GPLv3), работает в фоне без CoreLocation.
+- **macOS и Windows** — тот же Flutter UI + Dart-ядро в процессе приложения, иконка в menu bar / трее.
 
 Приложение переосмысляет рабочий [AndMTProto](https://github.com/oruviyex18/AndMTProto). Архитектура и этапы — в [docs/architecture.md](docs/architecture.md).
 
@@ -35,6 +36,8 @@ iOS-версия собирается локально из исходников
 
 macOS-версия собирается локально и использует то же Dart-ядро в процессе приложения; подпись и нотаризация не требуются для запуска на своём Mac. Инструкция — ниже.
 
+Windows-версия собирается локально из `windows/` и также запускает Dart-ядро в процессе приложения. Работает из трея, поддерживает автозапуск при входе и не требует установки драйверов или служб. Инструкция — ниже.
+
 ## Стек
 
 - Flutter 3.50 / Dart 3.14
@@ -44,6 +47,7 @@ macOS-версия собирается локально и использует
 - Android: minSdk 29, targetSdk 36, compileSdk 37
 - iOS: Network Extension (packet tunnel) + Rust-ядро, iOS 15+
 - macOS: Flutter + Dart-ядро в процессе, macOS 12+
+- Windows: Flutter + Dart-ядро в процессе, Windows 10/11 x64
 - Сборка iOS: Xcode 26+, Flutter 3.50, Rust с target `aarch64-apple-ios`
 - Платная учётная запись Apple Developer с доступом к Network Extensions
 
@@ -66,6 +70,12 @@ dart test packages/tg_proxy_core
 
 ```bash
 flutter build apk --debug
+```
+
+Сборка Windows:
+
+```bash
+flutter build windows --release
 ```
 
 ## iOS
@@ -156,6 +166,24 @@ open "build/macos/Build/Products/Release/TG WS Proxy.app"
 - Автозапуск при входе не поддерживается. Bot API работает через свой Cloudflare Worker.
 - Для распространения вне своего Mac нужна подпись Developer ID и нотаризация — в релизы macOS-сборка не входит.
 
+## Windows
+
+Windows-приложение использует общий Flutter UI и чистое Dart-ядро `tg_proxy_core` в процессе приложения — без служб, драйверов и WFP.
+
+```powershell
+flutter pub get
+flutter build windows --release
+.\build\windows\x64\runner\Release\tgwsproxy.exe
+```
+
+- Прокси слушает `127.0.0.1:1443`; ссылка и настройки — как на Android и macOS.
+- Cloudflare сначала пробуется по TLS (443). Если провайдер блокирует рукопожатие, прокси сам переключается на порт 80 и периодически проверяет TLS снова.
+- Свой домен Cloudflare и свои Workers задаются в настройках. Домен используется как `kws<DC>.<домен>`; Workers включаются отдельным переключателем. Настройки из iOS-экспорта (`domain`, `cfUserDomains`, `cfWorkerDomains`) импортируются без потерь.
+- Настройки и секрет лежат в `%APPDATA%\White Tiger Soft\TG WS Proxy\proxy_settings.json`. Секрет не хранится в Credential Manager.
+- Закрытие окна сворачивает приложение в трей и не останавливает прокси. Двойной клик по иконке возвращает окно, меню трея содержит «Подключить/Отключить», «Открыть Telegram», «Скопировать ссылку», «Открыть приложение» и «Выход». Повторный запуск `tgwsproxy.exe` открывает уже работающее окно вместо второго экземпляра.
+- Автозапуск при входе включается переключателем в настройках и пишет запись в `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` с аргументом `--autostart`.
+- Для распространения нужна подпись кода; в GitHub Releases Windows-сборка не входит.
+
 ## Маршрут Cloudflare
 
 Встроенные домены `cfproxy` из upstream больше не отвечают (`404` после
@@ -188,6 +216,6 @@ docs/
 
 ## Лицензия
 
-Android-часть и Dart-ядро — MIT. См. [LICENSE](LICENSE) и [NOTICE](NOTICE). Проект основан на MIT-коде Flowseal.
+Android-, macOS- и Windows-части и Dart-ядро — MIT. См. [LICENSE](LICENSE) и [NOTICE](NOTICE). Проект основан на MIT-коде Flowseal.
 
 iOS Network Extension содержит Rust-ядро под GPLv3; текст лицензии — `ios/RustCore/COPYING`. Если распространяешь iOS-сборку, учитывай требования GPLv3 к исходному коду.

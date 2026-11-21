@@ -81,7 +81,11 @@ class _SettingsPageState extends BasePageState<SettingsPage>
                   onChanged: model.setAutoStart,
                   secondary: const Icon(Icons.power_settings_new),
                   title: const Text('Запускать при загрузке'),
-                  subtitle: const Text('После первой разблокировки устройства'),
+                  subtitle: Text(
+                    Platform.isWindows
+                        ? 'При входе в Windows, вместе с прокси'
+                        : 'После первой разблокировки устройства',
+                  ),
                 ),
                 const Divider(height: 1),
               ],
@@ -310,13 +314,15 @@ class _SettingsPageState extends BasePageState<SettingsPage>
                 subtitle: Text(
                   Platform.isMacOS
                       ? 'Версия, macOS и состояние'
+                      : Platform.isWindows
+                      ? 'Версия, Windows и состояние'
                       : 'Версия, Android, ABI и состояние',
                 ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => showDiagnosticsDialog(context, model.proxy),
               ),
               const Divider(height: 1),
-              if (!Platform.isMacOS) ...[
+              if (!Platform.isMacOS && !Platform.isWindows) ...[
                 ListTile(
                   leading: const Icon(Icons.battery_saver_outlined),
                   title: const Text('Энергосбережение'),

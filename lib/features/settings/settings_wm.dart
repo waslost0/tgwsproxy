@@ -1,6 +1,9 @@
 // Purpose: Settings view-model; persists UI preferences.
+import 'dart:io';
+
 import '../../core/base/base_model.dart';
 import '../../core/db/app_database.dart';
+import '../../core/platform/windows_autostart.dart';
 import '../../core/proxy/proxy_repository.dart';
 
 class SettingsWM extends BaseModel {
@@ -28,7 +31,16 @@ class SettingsWM extends BaseModel {
   bool loaded = false;
 
   Future<void> load() async {
-    autoStart = (await db.read('auto_start')) != 'false';
+    final storedAutoStart = await db.read('auto_start');
+    // A settings file imported from iOS/Android carries `autoStart`; use it
+    // when the desktop preference has not been written yet.
+    final settingsAutoStart = proxy.settings['autoStart'] == true;
+    autoStart = storedAutoStart == null
+        ? (Platform.isWindows ? settingsAutoStart : true)
+        : storedAutoStart != 'false';
+    if (Platform.isWindows && storedAutoStart == null && settingsAutoStart) {
+      await WindowsAutoStart.setEnabled(true);
+    }
     checkUpdates = (await db.read('check_updates')) != 'false';
     noSecure = proxy.settings['noSecure'] == true;
     cfWorkerEnabled = proxy.settings['cfWorkerEnabled'] == true;
@@ -151,6 +163,9 @@ class SettingsWM extends BaseModel {
     autoStart = value;
     notifyModelListeners();
     await db.write('auto_start', '$value');
+    if (Platform.isWindows) {
+      await WindowsAutoStart.setEnabled(value);
+    }
   }
 
   Future<void> setCheckUpdates(bool value) async {

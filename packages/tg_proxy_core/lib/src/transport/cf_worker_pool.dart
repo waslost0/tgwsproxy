@@ -84,7 +84,11 @@ class CfWorkerPool {
   }
 
   Future<void> warmup(Map<int, String> fallbackDcs) async {
-    if (config.poolSize <= 0 || config.cfproxyWorkerDomains.isEmpty) return;
+    if (config.poolSize <= 0 ||
+        !config.cfWorkerEnabled ||
+        config.cfproxyWorkerDomains.isEmpty) {
+      return;
+    }
     for (final entry in fallbackDcs.entries) {
       _scheduleRefill(entry.key, entry.value, config.cfproxyWorkerDomains);
     }

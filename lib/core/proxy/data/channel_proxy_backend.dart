@@ -43,6 +43,7 @@ class ChannelProxyBackend implements ProxyBackend {
   static String _platformName() {
     if (Platform.isIOS) return 'ios';
     if (Platform.isMacOS) return 'macos';
+    if (Platform.isWindows) return 'windows';
     if (Platform.environment.containsKey('FLUTTER_TEST')) return 'test';
     return 'android';
   }

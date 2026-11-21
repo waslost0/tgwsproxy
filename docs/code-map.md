@@ -146,7 +146,13 @@
 | `.../service/BootReceiver.kt` | Автозапуск после загрузки, если включён `autoStart`. |
 | `lib/core/proxy/domain/proxy_backend.dart` | Контракт бэкенда прокси: события, bootstrap, start/stop/settings, секрет, диагностика. |
 | `lib/core/proxy/data/channel_proxy_backend.dart` | MethodChannel/EventChannel для Android и iOS. |
-| `lib/core/proxy/data/mac_proxy_engine.dart` | In-process Dart-ядро для macOS. |
+| `lib/core/proxy/data/desktop_proxy_engine.dart` | In-process Dart-ядро для macOS и Windows: настройки/секрет в JSON, домен и Workers, канал меню/трея, диагностика. |
+| `lib/core/proxy/data/mac_proxy_engine.dart` | Тонкая macOS-обёртка `DesktopProxyEngine` для совместимости тестов и API. |
+| `lib/core/platform/windows_autostart.dart` | Автозапуск Windows через `HKCU\...\Run` и аргумент `--autostart`. |
+| `windows/runner/main.cpp` | Окно `TG WS Proxy`, размер, single-instance mutex и повторное открытие скрытого окна. |
+| `windows/runner/flutter_window.cpp/.h` | Трей-иконка, меню, close-to-tray, канал `.../menu`, буфер обмена для ссылки. |
+| `windows/runner/Runner.rc`, `resources/app_icon.ico` | Метаданные exe, версия, иконка приложения/трея. |
+| `scripts/make_windows_icon.ps1` | Генерация многоразмерного `.ico` из `assets/icon/app_icon_1024.png`. |
 | `lib/core/proxy/proxy_repository.dart` | Фасад состояния для UI: выбирает бэкенд, хранит state/settings/logs, реагирует на события `{type: menu}`. |
 | `android/app/src/main/res/...` | Иконки, стили, строки уведомлений; канал уведомлений создаётся в `ProxyService`. |
 | `scripts/check_16kb.sh` | Проверка выравнивания native-библиотек Flutter под 16 KB pages. |

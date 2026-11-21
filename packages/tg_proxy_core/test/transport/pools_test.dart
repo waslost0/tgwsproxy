@@ -135,6 +135,33 @@ void main() {
       addTearDown(pool.dispose);
       expect(await pool.acquire(2, '149.154.167.220', const []), isNull);
     });
+
+    test('does not warm workers while they are disabled', () async {
+      var created = 0;
+      final pool = CfWorkerPool(
+        config: const ProxyConfig(
+          poolSize: 3,
+          cfproxyWorkerDomains: ['w.example'],
+        ),
+        stats: ProxyStats(),
+        connector: ({
+          required host,
+          required domain,
+          required secure,
+          required path,
+          sni,
+          required timeout,
+        }) async {
+          created++;
+          return _FakeTransport();
+        },
+      );
+      addTearDown(pool.dispose);
+
+      await pool.warmup({2: '149.154.167.220'});
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(created, 0);
+    });
   });
 
   group('TcpFallback', () {

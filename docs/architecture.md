@@ -27,7 +27,7 @@ Android- и iOS-приложение на Flutter: локальный MTProto-п
 | Bot API | Android: включён по умолчанию, порт 8081; iOS: не поддерживается (`botApiError`) |
 | minSdk / targetSdk | 29 / 36, compileSdk из base-flutter (37); iOS 15+ |
 | Package id | Android `com.example.tgwsproxy` — временный; iOS `com.whitetigersoft.tgwsproxy` |
-| Платформы | Android и iOS (Network Extension), macOS (Dart-ядро в процессе); web/desktop — вне scope |
+| Платформы | Android и iOS (Network Extension), macOS и Windows (Dart-ядро в процессе); web — вне scope |
 
 ---
 
@@ -939,13 +939,13 @@ Bot client ──CONNECT api.telegram.org:443──► 127.0.0.1:8081 (Dart bota
 
 | Уровень | Что проверяем |
 |---|---|
-| Dart core unit | AES-CTR/KDF на тест-векторах, obfuscation-handshake, relay init, `MsgSplitter`, FakeTLS ClientHello/HMAC, WS-кадры и маскирование, CF-балансер, CONNECT-парсер, JSON-конфиг, stats; лимит заголовков WS (64 КиБ). **60 тестов.** |
+| Dart core unit | AES-CTR/KDF на тест-векторах, obfuscation-handshake, relay init, `MsgSplitter`, FakeTLS ClientHello/HMAC, WS-кадры и маскирование, CF-балансер, CONNECT-парсер, JSON-конфиг, stats; лимит заголовков WS (64 КиБ). **73 теста.** |
 | Dart core integration | поднятие движка на localhost с фейковым WS/DC, полный handshake, порядок fallback worker→CF→TCP, повторный старт, закрытие listener'а |
 | Dart benchmark | PointyCastle AES-CTR на целевом ARM: 64 КБ чанки, gate ≥10 МБ/с, профиль памяти |
 | Rust unit | `cargo test --lib`: TLS по умолчанию (не `NoVerify`), 2 теста proxy. **3 теста.** |
 | Kotlin unit | `ProxyAddress`: допустимые адреса/порты. **3 теста**, запускаются локально `./gradlew :app:testDebugUnitTest`; в CI не входят. |
 | Kotlin instrumented | `ProxyService` + headless engine start/stop, watchdog, BootReceiver, TileService, DataStore, уничтожение UI-процесса. Автотестов нет. |
-| Flutter unit/widget | `UpdateChecker` (сравнение версий, официальный URL, SHA-256), `MacProxyEngine` (секрет, импорт/экспорт, запуск listener), модели/WM, форматирование, экраны. **9 тестов.** |
+| Flutter unit/widget | `UpdateChecker` (сравнение версий, официальный URL, SHA-256), `DesktopProxyEngine`/`MacProxyEngine` (секрет, импорт/экспорт, домен/Workers, запуск listener), модели/WM, форматирование, экраны. **17 тестов.** |
 | iOS RunnerTests | `IosProxySettings.generatedSecret` — 32 hex, не legacy-константа, отклонение некорректных секретов. **2 теста** на устройстве. |
 | Integration | `integration_test`: старт → порт 1443 слушается → стоп → порт закрыт; смена настроек → рестарт; Bot API CONNECT — не реализовано |
 | Manual | устройства/клиенты/сети, reboot, tile, Doze, airplane mode, блокировка CF по TLS |
@@ -986,6 +986,7 @@ Bot client ──CONNECT api.telegram.org:443──► 127.0.0.1:8081 (Dart bota
 make gen        # build_runner (Drift, routes, freezed)
 make run        # flutter run
 make apk        # flutter build apk --release --split-per-abi
+make windows    # flutter build windows --release
 make check      # analyze + flutter test + dart test packages/tg_proxy_core + 16kb
 make core-test  # только Dart-ядро
 make core-bench # AES-CTR на текущем устройстве/хосте
@@ -1009,10 +1010,12 @@ make core-bench # AES-CTR на текущем устройстве/хосте
 1. `flutter pub get`; `dart pub get` в `packages/tg_proxy_core`.
 2. `dart format --output=none --set-exit-if-changed lib test packages`.
 3. `flutter analyze`.
-4. `flutter test` — 5 тестов.
-5. `dart test` в `packages/tg_proxy_core` — 60 тестов.
+4. `flutter test` — 17 тестов.
+5. `dart test` в `packages/tg_proxy_core` — 60+ тестов.
 6. Копирование `.github/gradle/init-repositories.gradle.kts` в `$GRADLE_USER_HOME/init.d` — Maven Central раньше Gradle Plugin Portal (обход сбоя резолва Kotlin на runner).
 7. `flutter build apk --debug`.
+
+`windows` (windows-latest): `flutter pub get`, `flutter analyze`, `flutter test`, `flutter build windows --release` — проверка нативной обвязки Windows (трей, single-instance, CMake) на каждом PR.
 
 Android JUnit, Rust и iOS-тесты в CI не запускаются: iOS требует macOS и подписи, Rust/Android — отдельных джоб. Релиз собирается вручную: подписанный APK + `SHA256SUMS`, затем `gh release create`. `release.yml` нет.
 
@@ -1123,9 +1126,20 @@ Android 0.2.1 опубликован; iOS собирается локально 
 
 ### 21.4. macOS: реализация
 
-- `macos/` — Flutter-приложение, общий 4-табовый UI; Dart-ядро `tg_proxy_core` работает в процессе UI-изолята (`MacProxyEngine`), без MethodChannel и Network Extension.
-- Настройки и секрет — `Application Support` в sandbox-контейнере (`proxy_settings.json`); секрет генерируется `Random.secure`, не в Keychain. По умолчанию `noSecure=true`: TLS к встроенным CF-доменам часто блокируется, plain ws на порту 80 является рабочим маршрутом desktop-версии. Старые настройки мигрируют на plain один раз.
+- `macos/` — Flutter-приложение, общий 4-табовый UI; Dart-ядро `tg_proxy_core` работает в процессе UI-изолята через общий `DesktopProxyEngine` (`MacProxyEngine` — тонкая обёртка с `platform: macos`), без MethodChannel прокси и Network Extension.
+- Настройки и секрет — `Application Support` в sandbox-контейнере (`proxy_settings.json`); секрет генерируется `Random.secure`, не в Keychain. Cloudflare сначала пробуется по TLS; при блокировке рукопожатия коннектор сам переходит на plain ws порта 80 и периодически проверяет TLS снова.
 - Loopback `127.0.0.1:1443`, ссылка `tg://proxy`, открытие Telegram через `url_launcher`. Логи ядра (`proxyTalker`) транслируются в экран «Логи».
-- Entitlements: `network.client`, `network.server`, `files.user-selected.read-only`; окно закрывается без завершения приложения, Dock возвращает окно. В menu bar — статус, toggle, открытие Telegram, копирование ссылки, открытие окна и выход. Канал `com.whitetigersoft.tgwsproxy/menu` принадлежит `MacProxyEngine`: он передаёт статус через `pushMenuState`, а команды системы приходят Dart-слою как события `{type: menu, action: …}`.
-- `ProxyRepository` выбирает Mac-бэкенд по `Platform.isMacOS`; Android/iOS-каналы не менялись. Скрыты «Энергосбережение» и автозапуск, диагностика показывает macOS, обновление открывает страницу релизов.
-- Ограничения: нет Keychain, автозапуска при входе и подписи/нотаризации; Bot API требует CF Worker; тесты — 4 unit-теста `MacProxyEngine` (секрет, импорт/экспорт, start/stop listener).
+- Entitlements: `network.client`, `network.server`, `files.user-selected.read-only`; окно закрывается без завершения приложения, Dock возвращает окно. В menu bar — статус, toggle, открытие Telegram, копирование ссылки, открытие окна и выход. Канал `com.whitetigersoft.tgwsproxy/menu` принадлежит движку: он передаёт статус через `pushMenuState`, а команды системы приходят Dart-слою как события `{type: menu, action: …}`.
+- `ProxyRepository` выбирает desktop-бэкенд по `Platform.isMacOS || Platform.isWindows`; Android/iOS-каналы не менялись. Скрыты «Энергосбережение» и автозапуск, диагностика показывает macOS, обновление открывает страницу релизов.
+- Ограничения: нет Keychain, автозапуска при входе и подписи/нотаризации; Bot API требует CF Worker; unit-тесты общие с Windows (`DesktopProxyEngine`) плюс `MacProxyEngine`.
+
+### 21.5. Windows: реализация
+
+- `windows/` — стандартный Flutter runner, доработанный под поведение macOS. Нативное окно создаётся в `windows/runner/main.cpp`; заголовок `TG WS Proxy`, размер `1000×800`, иконка и версия — из `Runner.rc`.
+- Трей: `FlutterWindow` регистрирует `NOTIFYICONDATAW` (`Shell_NotifyIconW`) с тем же каналом `com.whitetigersoft.tgwsproxy/menu`. Меню: статус, «Подключить/Отключить», «Открыть Telegram», «Скопировать ссылку», «Открыть приложение», «Выход». `WM_CLOSE` скрывает окно (`SW_HIDE`) и оставляет прокси работать; выход — только через пункт «Выход».
+- Single instance: именованный mutex `Local\TGWSProxy.SingleInstance`; повторный запуск через `FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW")` показывает уже работающее окно вместо второго прокси на том же порту.
+- Прокси: тот же `DesktopProxyEngine`, что и на macOS, с `platform: windows`. Настройки и секрет — `%APPDATA%\White Tiger Soft\TG WS Proxy\proxy_settings.json`; секрет хранится в JSON, не в Credential Manager.
+- Импорт настроек iOS/Android: `domain` трактуется как `cfUserDomains`, если список пуст; `cfUserDomains`, `cfWorkerDomains` и `cfWorkerEnabled` сохраняются без потерь. При старте `ProxyServer` прогревает только включённые Workers; при выключенном переключателе соединения к Worker-доменам не открываются. Это проверено на реальном конфиге `cfUserDomains: [wts-tbss-test.ru]` + двух `*.workers.dev`: маршрут `cf_worker` и `kws2.wts-tbss-test.ru` (TLS) поднимаются.
+- Автозапуск: переключатель в настройках пишет `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`TGWSProxy` = `"<exe>" --autostart`). `main(List<String> args)` при `--autostart` поднимает прокси, если `auto_start` включён в БД или в импортированных настройках (`autoStart`).
+- Сборка: `flutter build windows --release`; `shell32.lib` подключён в `windows/runner/CMakeLists.txt`; `scripts/make_windows_icon.ps1` собирает многоразмерный `windows/runner/resources/app_icon.ico` из `assets/icon/app_icon_1024.png`.
+- Ограничения: нет подписи кода/MSIX, нет Credential Manager и MSI-инсталлятора; для распространения нужна подпись. Тесты — общий `DesktopProxyEngine` (секрет, импорт/экспорт, домен/Workers, listener) и нативная сборка в CI на `windows-latest`.

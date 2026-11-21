@@ -7,14 +7,14 @@ import 'package:flutter/services.dart';
 import 'package:talker/talker.dart';
 
 import 'data/channel_proxy_backend.dart';
-import 'data/mac_proxy_engine.dart';
+import 'data/desktop_proxy_engine.dart';
 import 'domain/proxy_backend.dart';
 import 'domain/proxy_models.dart';
 
 /// Single state holder the UI talks to.
 ///
-/// Android/iOS use a [ChannelProxyBackend]; macOS runs [MacProxyEngine]
-/// in-process. Tests may inject any [ProxyBackend].
+/// Android/iOS use a [ChannelProxyBackend]; macOS and Windows run
+/// [DesktopProxyEngine] in-process. Tests may inject any [ProxyBackend].
 class ProxyRepository extends ChangeNotifier {
   ProxyRepository({ProxyBackend? backend}) {
     _backend = backend;
@@ -40,11 +40,11 @@ class ProxyRepository extends ChangeNotifier {
 
     var backend = _backend;
     if (backend == null) {
-      if (Platform.isMacOS &&
-          !Platform.environment.containsKey('FLUTTER_TEST')) {
-        final mac = MacProxyEngine();
-        await mac.load();
-        backend = mac;
+      final isDesktop = Platform.isMacOS || Platform.isWindows;
+      if (isDesktop && !Platform.environment.containsKey('FLUTTER_TEST')) {
+        final desktop = DesktopProxyEngine();
+        await desktop.load();
+        backend = desktop;
       } else {
         backend = ChannelProxyBackend();
       }
