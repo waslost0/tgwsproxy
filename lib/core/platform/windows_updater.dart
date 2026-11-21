@@ -97,6 +97,9 @@ class WindowsUpdater {
         flush: true,
       );
 
+      // ProcessStartMode.detached does not start PowerShell reliably on
+      // Windows; normal mode plus -WindowStyle Hidden keeps the helper alive
+      // after this process exits.
       final process = await Process.start(
         _powershell,
         [
@@ -109,7 +112,7 @@ class WindowsUpdater {
           script.path,
         ],
         workingDirectory: temp.path,
-        mode: ProcessStartMode.detached,
+        mode: ProcessStartMode.normal,
       );
 
       // Do not exit until the helper is actually running. A fast exit can
