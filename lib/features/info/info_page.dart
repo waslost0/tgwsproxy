@@ -1,11 +1,15 @@
 // Purpose: About, version, license and privacy information.
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/base/base_page.dart';
+import '../../core/platform/windows_updater.dart';
+import '../../core/proxy/proxy_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/ui/app_toast.dart';
 import '../../core/update/update_checker.dart';
@@ -28,6 +32,41 @@ class _InfoPageState extends BasePageState<InfoPage> {
       if (!mounted) return;
       if (!UpdateChecker.isNewer(release.version, current.version)) {
         AppToast.showMessage('Установлена последняя версия ${current.version}');
+        return;
+      }
+      final canSelfUpdate =
+          Platform.isWindows &&
+          !kDebugMode &&
+          release.windowsUrl != null &&
+          release.sumsUrl != null &&
+          UpdateChecker.isOfficialDownload(release.windowsUrl!) &&
+          UpdateChecker.isOfficialDownload(release.sumsUrl!);
+      if (canSelfUpdate) {
+        final shouldUpdate = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Доступно обновление'),
+            content: Text(
+              'Текущая версия: ${current.version}\n'
+              'Новая версия: ${release.version}\n\n'
+              'Приложение скачает архив, проверит SHA-256, заменит файлы '
+              'и перезапустится. Настройки и секрет сохранятся.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Позже'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Обновить'),
+              ),
+            ],
+          ),
+        );
+        if (shouldUpdate == true) {
+          await _runWindowsUpdate(release);
+        }
         return;
       }
       final download = Platform.isAndroid
@@ -71,6 +110,62 @@ class _InfoPageState extends BasePageState<InfoPage> {
       await _showUpdateError('Не удалось проверить обновление: $error');
     } finally {
       if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  Future<void> _runWindowsUpdate(ReleaseInfo release) async {
+    final proxy = context.read<ProxyRepository>();
+    final status = ValueNotifier<String>('Скачивание…');
+    final progress = ValueNotifier<double>(0);
+    final dialog = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Обновление'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ValueListenableBuilder<String>(
+              valueListenable: status,
+              builder: (context, value, child) => Text(value),
+            ),
+            const SizedBox(height: 16),
+            ValueListenableBuilder<double>(
+              valueListenable: progress,
+              builder: (context, value, child) =>
+                  LinearProgressIndicator(value: value == 0 ? null : value),
+            ),
+          ],
+        ),
+      ),
+    );
+    try {
+      await WindowsUpdater.install(
+        zipUrl: release.windowsUrl!,
+        sumsUrl: release.sumsUrl!,
+        version: release.version,
+        resume: proxy.state.running || proxy.state.starting,
+        onProgress: (value) {
+          progress.value = value;
+          status.value = value >= 1
+              ? 'Проверка и запуск…'
+              : 'Скачивание… ${(value * 100).round()}%';
+        },
+      );
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      await dialog;
+    } on WindowsUpdateException catch (error) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      await dialog;
+      if (mounted) await _showUpdateError(error.message);
+    } catch (error) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      await dialog;
+      if (mounted) await _showUpdateError('Не удалось обновить: $error');
+    } finally {
+      status.dispose();
+      progress.dispose();
     }
   }
 

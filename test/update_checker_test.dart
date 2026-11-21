@@ -40,4 +40,44 @@ void main() {
     expect(UpdateChecker.parseSha256(sums, 'tgwsproxy-0.2.1.apk'), 'aaa');
     expect(UpdateChecker.parseSha256(sums, 'missing.apk'), isNull);
   });
+
+  test('parseRelease picks the Windows zip and SHA256SUMS', () {
+    const base =
+        'https://github.com/waslost0/tgwsproxy/releases/download/v0.5.2';
+    final info = UpdateChecker.parseRelease({
+      'tag_name': 'v0.5.2',
+      'html_url': 'https://github.com/waslost0/tgwsproxy/releases/tag/v0.5.2',
+      'assets': [
+        {
+          'name': 'tgwsproxy-0.5.2.apk',
+          'browser_download_url': '$base/tgwsproxy-0.5.2.apk',
+        },
+        {
+          'name': 'tgwsproxy-0.5.2-windows-x64.zip',
+          'browser_download_url': '$base/tgwsproxy-0.5.2-windows-x64.zip',
+        },
+        {
+          'name': 'tgwsproxy-0.5.2-macos.zip',
+          'browser_download_url': '$base/tgwsproxy-0.5.2-macos.zip',
+        },
+        {'name': 'SHA256SUMS', 'browser_download_url': '$base/SHA256SUMS'},
+      ],
+    });
+    expect(info.version, '0.5.2');
+    expect(info.windowsUrl, endsWith('tgwsproxy-0.5.2-windows-x64.zip'));
+    expect(info.apkUrl, endsWith('tgwsproxy-0.5.2.apk'));
+    expect(info.sumsUrl, endsWith('/SHA256SUMS'));
+  });
+
+  test('parseRelease tolerates releases without platform assets', () {
+    final info = UpdateChecker.parseRelease({
+      'tag_name': 'v0.1.0',
+      'html_url': 'https://github.com/waslost0/tgwsproxy/releases/tag/v0.1.0',
+      'assets': const [],
+    });
+    expect(info.version, '0.1.0');
+    expect(info.windowsUrl, isNull);
+    expect(info.sumsUrl, isNull);
+    expect(info.apkUrl, isNull);
+  });
 }

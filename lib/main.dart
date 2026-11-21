@@ -36,12 +36,16 @@ Future<void> main(List<String> args) async {
   final proxy = ProxyRepository();
   await proxy.init();
 
-  // Windows login autostart launches the executable with this flag.
-  if (Platform.isWindows && args.contains('--autostart')) {
+  // Windows login autostart launches the executable with `--autostart`;
+  // the in-app updater restarts it with `--resume` to keep the proxy running.
+  final resume = args.contains('--resume');
+  if (Platform.isWindows && (args.contains('--autostart') || resume)) {
     final stored = await app.db.read('auto_start');
-    final enabled = stored != null
-        ? stored == 'true'
-        : proxy.settings['autoStart'] == true;
+    final enabled =
+        resume ||
+        (stored != null
+            ? stored == 'true'
+            : proxy.settings['autoStart'] == true);
     if (enabled) unawaited(proxy.start());
   }
 

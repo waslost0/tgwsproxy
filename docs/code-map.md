@@ -149,6 +149,9 @@
 | `lib/core/proxy/data/desktop_proxy_engine.dart` | In-process Dart-ядро для macOS и Windows: настройки/секрет в JSON, домен и Workers, канал меню/трея, диагностика. |
 | `lib/core/proxy/data/mac_proxy_engine.dart` | Тонкая macOS-обёртка `DesktopProxyEngine` для совместимости тестов и API. |
 | `lib/core/platform/windows_autostart.dart` | Автозапуск Windows через `HKCU\...\Run` и аргумент `--autostart`. |
+| `lib/core/platform/windows_app_data.dart` | Перенос `proxy_settings.json` и `app.db` из старой папки в `%APPDATA%\TG WS Proxy`. |
+| `lib/core/platform/windows_updater.dart` | Скачивание Windows-zip, проверка SHA-256 и запуск PowerShell-хелпера для замены файлов. |
+| `lib/core/update/update_checker.dart` | Проверка GitHub Releases, выбор ассетов и SHA-256. |
 | `windows/runner/main.cpp` | Окно `TG WS Proxy`, размер, single-instance mutex и повторное открытие скрытого окна. |
 | `windows/runner/flutter_window.cpp/.h` | Трей-иконка, меню, close-to-tray, канал `.../menu`, буфер обмена для ссылки. |
 | `windows/runner/Runner.rc`, `resources/app_icon.ico` | Метаданные exe, версия, иконка приложения/трея. |

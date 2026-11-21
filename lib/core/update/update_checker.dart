@@ -8,11 +8,19 @@ class ReleaseInfo {
     required this.version,
     required this.pageUrl,
     this.apkUrl,
+    this.windowsUrl,
+    this.sumsUrl,
   });
 
   final String version;
   final String pageUrl;
   final String? apkUrl;
+
+  /// `tgwsproxy-<version>-windows-x64.zip` from the release assets.
+  final String? windowsUrl;
+
+  /// `SHA256SUMS` next to the release assets.
+  final String? sumsUrl;
 }
 
 class UpdateCheckException implements Exception {
@@ -67,23 +75,35 @@ class UpdateChecker {
     if (raw is! Map) {
       throw const UpdateCheckException('Некорректный ответ GitHub.');
     }
+    return parseRelease(raw);
+  }
+
+  /// Exposed for tests: picks the platform assets out of the release JSON.
+  static ReleaseInfo parseRelease(Map raw) {
     final tag = raw['tag_name']?.toString() ?? '';
     final page = raw['html_url']?.toString() ?? releasesPage;
     String? apk;
+    String? windows;
+    String? sums;
     final assets = raw['assets'];
     if (assets is List) {
       for (final asset in assets) {
-        if (asset is Map &&
-            asset['name']?.toString().toLowerCase().endsWith('.apk') == true) {
-          apk = asset['browser_download_url']?.toString();
-          if (apk != null) break;
-        }
+        if (asset is! Map) continue;
+        final name = asset['name']?.toString() ?? '';
+        final url = asset['browser_download_url']?.toString();
+        if (url == null) continue;
+        final lower = name.toLowerCase();
+        if (lower.endsWith('.apk')) apk ??= url;
+        if (lower.endsWith('windows-x64.zip')) windows ??= url;
+        if (name == 'SHA256SUMS') sums ??= url;
       }
     }
     return ReleaseInfo(
       version: tag.replaceFirst(RegExp(r'^v'), ''),
       pageUrl: page,
       apkUrl: apk,
+      windowsUrl: windows,
+      sumsUrl: sums,
     );
   }
 
