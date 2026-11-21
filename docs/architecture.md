@@ -945,7 +945,7 @@ Bot client ──CONNECT api.telegram.org:443──► 127.0.0.1:8081 (Dart bota
 | Rust unit | `cargo test --lib`: TLS по умолчанию (не `NoVerify`), 2 теста proxy. **3 теста.** |
 | Kotlin unit | `ProxyAddress`: допустимые адреса/порты. **3 теста**, запускаются локально `./gradlew :app:testDebugUnitTest`; в CI не входят. |
 | Kotlin instrumented | `ProxyService` + headless engine start/stop, watchdog, BootReceiver, TileService, DataStore, уничтожение UI-процесса. Автотестов нет. |
-| Flutter unit/widget | `UpdateChecker` (сравнение версий, официальный URL, SHA-256), `DesktopProxyEngine`/`MacProxyEngine` (секрет, импорт/экспорт, домен/Workers, запуск listener), модели/WM, форматирование, экраны. **17 тестов.** |
+| Flutter unit/widget | `UpdateChecker` (сравнение версий, официальный URL, SHA-256), `DesktopProxyEngine`/`MacProxyEngine` (секрет, импорт/экспорт, домен/Workers, запуск listener), `WindowsAppData` (перенос данных), модели/WM, форматирование, экраны. **19 тестов.** |
 | iOS RunnerTests | `IosProxySettings.generatedSecret` — 32 hex, не legacy-константа, отклонение некорректных секретов. **2 теста** на устройстве. |
 | Integration | `integration_test`: старт → порт 1443 слушается → стоп → порт закрыт; смена настроек → рестарт; Bot API CONNECT — не реализовано |
 | Manual | устройства/клиенты/сети, reboot, tile, Doze, airplane mode, блокировка CF по TLS |
@@ -1010,7 +1010,7 @@ make core-bench # AES-CTR на текущем устройстве/хосте
 1. `flutter pub get`; `dart pub get` в `packages/tg_proxy_core`.
 2. `dart format --output=none --set-exit-if-changed lib test packages`.
 3. `flutter analyze`.
-4. `flutter test` — 17 тестов.
+4. `flutter test` — 19 тестов.
 5. `dart test` в `packages/tg_proxy_core` — 60+ тестов.
 6. Копирование `.github/gradle/init-repositories.gradle.kts` в `$GRADLE_USER_HOME/init.d` — Maven Central раньше Gradle Plugin Portal (обход сбоя резолва Kotlin на runner).
 7. `flutter build apk --debug`.
@@ -1138,7 +1138,7 @@ Android 0.2.1 опубликован; iOS собирается локально 
 - `windows/` — стандартный Flutter runner, доработанный под поведение macOS. Нативное окно создаётся в `windows/runner/main.cpp`; заголовок `TG WS Proxy`, размер `1000×800`, иконка и версия — из `Runner.rc`.
 - Трей: `FlutterWindow` регистрирует `NOTIFYICONDATAW` (`Shell_NotifyIconW`) с тем же каналом `com.whitetigersoft.tgwsproxy/menu`. Меню: статус, «Подключить/Отключить», «Открыть Telegram», «Скопировать ссылку», «Открыть приложение», «Выход». `WM_CLOSE` скрывает окно (`SW_HIDE`) и оставляет прокси работать; выход — только через пункт «Выход».
 - Single instance: именованный mutex `Local\TGWSProxy.SingleInstance`; повторный запуск через `FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW")` показывает уже работающее окно вместо второго прокси на том же порту.
-- Прокси: тот же `DesktopProxyEngine`, что и на macOS, с `platform: windows`. Настройки и секрет — в каталоге данных приложения (`%APPDATA%`)\`proxy_settings.json`; секрет хранится в JSON, не в Credential Manager.
+- Прокси: тот же `DesktopProxyEngine`, что и на macOS, с `platform: windows`. Настройки и секрет — `%APPDATA%\TG WS Proxy\proxy_settings.json`; секрет хранится в JSON, не в Credential Manager. При обновлении со старых сборок данные автоматически переносятся в новую папку.
 - Импорт настроек iOS/Android: `domain` трактуется как `cfUserDomains`, если список пуст; `cfUserDomains`, `cfWorkerDomains` и `cfWorkerEnabled` сохраняются без потерь. При старте `ProxyServer` прогревает только включённые Workers; при выключенном переключателе соединения к Worker-доменам не открываются. Это проверено на реальном конфиге `cfUserDomains: [wts-tbss-test.ru]` + двух `*.workers.dev`: маршрут `cf_worker` и `kws2.wts-tbss-test.ru` (TLS) поднимаются.
 - Автозапуск: переключатель в настройках пишет `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`TGWSProxy` = `"<exe>" --autostart`). `main(List<String> args)` при `--autostart` поднимает прокси, если `auto_start` включён в БД или в импортированных настройках (`autoStart`).
 - Сборка: `flutter build windows --release`; `shell32.lib` подключён в `windows/runner/CMakeLists.txt`; `scripts/make_windows_icon.ps1` собирает многоразмерный `windows/runner/resources/app_icon.ico` из `assets/icon/app_icon_1024.png`.

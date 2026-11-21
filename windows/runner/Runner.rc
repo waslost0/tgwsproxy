@@ -89,11 +89,9 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "White Tiger Soft" "\0"
             VALUE "FileDescription", "TG WS Proxy - local MTProto proxy for Telegram" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "tgwsproxy" "\0"
-            VALUE "LegalCopyright", "MIT License. Copyright (C) 2026 White Tiger Soft." "\0"
             VALUE "OriginalFilename", "tgwsproxy.exe" "\0"
             VALUE "ProductName", "TG WS Proxy" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

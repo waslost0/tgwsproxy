@@ -12,6 +12,7 @@ import 'core/application.dart';
 import 'core/db/app_database.dart';
 import 'core/model/app_model.dart';
 import 'core/notifications/notification_permission.dart';
+import 'core/platform/windows_app_data.dart';
 import 'core/proxy/proxy_repository.dart';
 import 'proxy_main.dart' show runProxyEngine;
 
@@ -27,6 +28,9 @@ Future<void> main(List<String> args) async {
   }
 
   final dir = await getApplicationSupportDirectory();
+  if (Platform.isWindows) {
+    await migrateLegacyWindowsAppData(dir);
+  }
   final app = AppModel(AppDatabase.open(File(p.join(dir.path, 'app.db'))));
   await app.init();
   final proxy = ProxyRepository();

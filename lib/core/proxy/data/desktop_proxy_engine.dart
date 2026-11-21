@@ -13,6 +13,7 @@ import 'package:talker/talker.dart';
 import 'package:tg_proxy_core/tg_proxy_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../platform/windows_app_data.dart';
 import '../domain/proxy_backend.dart';
 import '../domain/proxy_models.dart';
 
@@ -95,6 +96,9 @@ class DesktopProxyEngine implements ProxyBackend {
     final dir = override != null
         ? Directory(override)
         : await getApplicationSupportDirectory();
+    if (override == null && Platform.isWindows) {
+      await migrateLegacyWindowsAppData(dir);
+    }
     await dir.create(recursive: true);
     _file = File(p.join(dir.path, 'proxy_settings.json'));
     String? filePlatform;
